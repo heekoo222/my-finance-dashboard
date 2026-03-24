@@ -55,8 +55,7 @@ st.sidebar.title("🛠️ 재무 전략 설정")
 
 # (1) 시작 연도
 with st.sidebar.expander("📅 시나리오 시작 시점", expanded=True):
-    start_yr = st.number_input("시작 연도", value=2026, min_value=2024, key="sys_start_yr")import streamlit as st
-import pandas as pd
+start_yr = st.number_input("시작 연도", value=2026, min_value=2024, key="sys_start_yr")import pandas as pd
 import plotly.graph_objects as go
 
 # 1. 페이지 설정 및 프리미엄 디자인 UI/UX
