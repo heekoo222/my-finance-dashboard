@@ -2,59 +2,81 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# 1. 페이지 설정 및 스타일
-st.set_page_config(page_title="우리집 통합 재무 시뮬레이터", layout="wide")
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    </style>
-    """, unsafe_allow_html=True)
+# 1. 페이지 설정 및 디자인
+st.set_page_config(page_title="통합 재무 대시보드", layout="wide")
+st.markdown("<style>div.block-container{padding-top:2rem;}</style>", unsafe_allow_html=True)
 
-st.title("💰 우리 가족 통합 재무 시뮬레이터")
-st.info("💡 사이드바에서 가정을 수정하면 차트가 즉시 업데이트됩니다.")
+st.title("📊 우리 가족 자산 관리 최종 시뮬레이터")
 
-# --- 세션 스테이트 (데이터 유지) ---
+# --- 세션 스테이트 초기화 (데이터 누락 방지) ---
 if 're_trades' not in st.session_state:
     st.session_state.re_trades = [{"year": 2033, "new_price": 25.0, "use_inv": 5.0, "use_debt": 5.0, "use_cash": 1.0}]
 if 'kids' not in st.session_state:
     st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 120, 150, 180, 250]}]
+if 'events' not in st.session_state:
+    st.session_state.events = [{"name": "차량 구매", "year": 2030, "cost": 0.6}]
 
 # --- 사이드바 설정 ---
 st.sidebar.header("⚙️ 시뮬레이션 설정")
 
 # (1) 부부 정보
-with st.sidebar.expander("👤 부부 수입 & 은퇴", expanded=False):
-    h_sal = st.number_input("남편 월급(만)", value=550)
-    h_inc = st.number_input("남편 인상률(%)", value=3.0) / 100
-    h_ret = st.number_input("남편 은퇴나이", value=55)
-    w_sal = st.number_input("아내 월급(만)", value=500)
-    w_inc = st.number_input("아내 인상률(%)", value=3.0) / 100
-    w_ret = st.number_input("아내 은퇴나이", value=55)
+with st.sidebar.expander("👤 부부 수입 & 은퇴/연금", expanded=True):
+    t1, t2 = st.tabs(["남편(95)", "아내(94)"])
+    with t1:
+        h_sal = st.number_input("남편 월급(만)", value=550)
+        h_inc = st.number_input("남편 인상률(%)", value=3.0) / 100
+        h_ret = st.number_input("남편 은퇴나이", value=55)
+        h_p_age = st.number_input("남편 연금시작", value=65)
+        h_p_amt = st.number_input("남편 연금액(월/만)", value=150)
+    with t2:
+        w_sal = st.number_input("아내 월급(만)", value=500)
+        w_inc = st.number_input("아내 인상률(%)", value=3.0) / 100
+        w_ret = st.number_input("아내 은퇴나이", value=55)
+        w_p_age = st.number_input("아내 연금시작", value=65)
+        w_p_amt = st.number_input("아내 연금액(월/만)", value=130)
 
-# (2) 부동산 갈아타기 (자금 출처 직접 입력)
-with st.sidebar.expander("🔄 부동산 갈아타기 계획", expanded=True):
+# (2) 자녀별 개별 양육비 (0~7, 8~13, 14~16, 17~19, 20~23)
+with st.sidebar.expander("👶 자녀별 맞춤 양육비", expanded=False):
+    if st.button("➕ 자녀 추가"):
+        st.session_state.kids.append({"name": f"자녀{len(st.session_state.kids)+1}", "birth": 2028, "costs": [100, 120, 150, 180, 250]})
+    for i, kid in enumerate(st.session_state.kids):
+        st.markdown(f"**{kid['name']} 설정**")
+        kid['birth'] = st.number_input(f"{kid['name']} 출생년도", 2024, 2050, kid['birth'], key=f"kb_{i}")
+        kid['costs'][0] = st.number_input(f"{kid['name']} 영유아비(만)", value=kid['costs'][0], key=f"kc0_{i}")
+        kid['costs'][1] = st.number_input(f"{kid['name']} 초등비(만)", value=kid['costs'][1], key=f"kc1_{i}")
+        kid['costs'][2] = st.number_input(f"{kid['name']} 중등비(만)", value=kid['costs'][2], key=f"kc2_{i}")
+        kid['costs'][3] = st.number_input(f"{kid['name']} 고등비(만)", value=kid['costs'][3], key=f"kc3_{i}")
+        kid['costs'][4] = st.number_input(f"{kid['name']} 대학비(만)", value=kid['costs'][4], key=f"kc4_{i}")
+
+# (3) 부동산 갈아타기 (자금 출처 직접 입력)
+with st.sidebar.expander("🔄 부동산 갈아타기 계획", expanded=False):
     if st.sidebar.button("➕ 갈아타기 추가"):
         st.session_state.re_trades.append({"year": 2040, "new_price": 35.0, "use_inv": 0.0, "use_debt": 0.0, "use_cash": 0.0})
-    
-    for i, trade in enumerate(st.session_state.re_trades):
+    for i, tr in enumerate(st.session_state.re_trades):
         st.markdown(f"**갈아타기 #{i+1}**")
-        trade['year'] = st.number_input(f"매수년도", 2025, 2095, trade['year'], key=f"tr_y_{i}")
-        trade['new_price'] = st.number_input(f"목표가(억)", 0.0, 100.0, trade['new_price'], key=f"tr_p_{i}")
+        tr['year'] = st.number_input(f"매수년도 {i}", 2025, 2095, tr['year'], key=f"try_{i}")
+        tr['new_price'] = st.number_input(f"매수가(억) {i}", 0.0, 100.0, tr['new_price'], key=f"trp_{i}")
         c1, c2, c3 = st.columns(3)
-        trade['use_inv'] = c1.number_input("금융자산 활용(억)", value=trade['use_inv'], key=f"tr_inv_{i}")
-        trade['use_debt'] = c2.number_input("추가대출(억)", value=trade['use_debt'], key=f"tr_debt_{i}")
-        trade['use_cash'] = c3.number_input("예금활용(억)", value=trade['use_cash'], key=f"tr_cash_{i}")
+        tr['use_inv'] = c1.number_input(f"금융자산활용{i}", value=tr['use_inv'], key=f"tri_{i}")
+        tr['use_debt'] = c2.number_input(f"추가대출{i}", value=tr['use_debt'], key=f"trd_{i}")
+        tr['use_cash'] = c3.number_input(f"예금활용{i}", value=tr['use_cash'], key=f"trc_{i}")
 
-# (3) 자산 & 세금 초기값
-with st.sidebar.expander("📈 자산 및 세금 기본값", expanded=False):
-    re_init = st.number_input("현재 부동산(억)", value=14.0)
-    re_growth = st.number_input("부동산 상승률(%)", value=4.0) / 100
-    inv_init = st.number_input("현재 투자자산(억)", value=1.0)
-    inv_growth = st.number_input("투자 수익률(%)", value=7.0) / 100
-    debt_init = st.number_input("현재 대출잔액(억)", value=6.0)
-    debt_rate = st.number_input("대출 금리(%)", value=4.0) / 100
-    tax_base = st.number_input("공시지가 반영률(%)", value=60.0) / 100
+# (4) 특별 이벤트
+with st.sidebar.expander("🚀 특별 이벤트", expanded=False):
+    if st.sidebar.button("➕ 이벤트 추가"):
+        st.session_state.events.append({"name": "이벤트", "year": 2025, "cost": 0.0})
+    for i, ev in enumerate(st.session_state.events):
+        e_c1, e_c2, e_c3 = st.columns([2,1,1])
+        ev['name'] = e_c1.text_input(f"명칭", ev['name'], key=f"evn_{i}")
+        ev['year'] = e_c2.number_input(f"년", 2025, 2095, ev['year'], key=f"evy_{i}")
+        ev['cost'] = e_c3.number_input(f"억", 0.0, 50.0, ev['cost'], key=f"evc_{i}")
+
+# (5) 자산 및 세금 기본값
+with st.sidebar.expander("📈 자산/세금 기본 가정", expanded=False):
+    re_init, re_gr = st.number_input("현재 부동산(억)", value=14.0), st.number_input("부동산상승률(%)", value=4.0)/100
+    inv_init, inv_gr = st.number_input("현재 투자(억)", value=1.0), st.number_input("투자수익률(%)", value=7.0)/100
+    debt_init, debt_r = st.number_input("현재 대출(억)", value=6.0), st.number_input("대출금리(%)", value=4.0)/100
+    tax_base, tax_rate = st.number_input("공시지가비율(%)", value=60.0)/100, st.number_input("보유세율(%)", value=0.2)/100
 
 # --- 시뮬레이션 엔진 ---
 def run_sim():
@@ -64,80 +86,100 @@ def run_sim():
     
     for year in range(2025, 2096):
         h_age, w_age = year - 1995, year - 1994
-        events = []
+        events_text = []
 
-        # 1. 수입 (급여)
-        inc = ((c_h_sal if h_age <= h_ret else 0) + (c_w_sal if w_age <= w_ret else 0)) * 13 / 10000 
-        
-        # 2. 갈아타기 처리
-        for trade in st.session_state.re_trades:
-            if year == trade['year']:
-                c_inv -= trade['use_inv']
-                c_debt += trade['use_debt']
-                c_cash -= trade['use_cash']
-                c_re = trade['new_price']
-                events.append(f"🏠{trade['new_price']}억 매수")
+        # 1. 수입 (급여 + 연금)
+        inc_h = (c_h_sal * 13) / 10000 if h_age <= h_ret else 0
+        inc_w = (c_w_sal * 13) / 10000 if w_age <= w_ret else 0
+        pension = 0
+        if h_age >= h_p_age: pension += (h_p_amt * 12) / 10000
+        if w_age >= w_p_age: pension += (w_p_amt * 12) / 10000
+        y_income = inc_h + inc_w + pension
 
-        # 3. 지출
-        tax = (c_re * tax_base) * 0.002 # 보유세 0.2% 가정
-        interest = c_debt * debt_rate
-        net_flow = inc - (4.0 + tax + interest) # 4.0은 연간 기본 생활비
-        
-        c_re *= (1 + re_growth)
-        c_inv = (c_inv + net_flow) * (1 + inv_growth)
+        # 2. 부동산 갈아타기
+        for tr in st.session_state.re_trades:
+            if year == tr['year']:
+                c_inv -= tr['use_inv']
+                c_debt += tr['use_debt']
+                c_cash -= tr['use_cash']
+                c_re = tr['new_price']
+                events_text.append(f"🏠{tr['new_price']}억 매수")
+
+        # 3. 양육비 계산 (자녀별 개별 시기 적용)
+        k_total = 0
+        for kid in st.session_state.kids:
+            ka = year - kid['birth']
+            if year == kid['birth']: events_text.append(f"👶{kid['name']} 탄생")
+            if 0<=ka<=7: k_total += kid['costs'][0]*12/10000
+            elif 8<=ka<=13: k_total += kid['costs'][1]*12/10000
+            elif 14<=ka<=16: k_total += kid['costs'][2]*12/10000
+            elif 17<=ka<=19: k_total += kid['costs'][3]*12/10000
+            elif 20<=ka<=23: k_total += kid['costs'][4]*12/10000
+
+        # 4. 세금 및 특별 이벤트
+        tax = (c_re * tax_base) * tax_rate
+        interest = c_debt * debt_r
+        ev_total = 0
+        for ev in st.session_state.events:
+            if year == ev['year']:
+                ev_total += ev['cost']
+                events_text.append(f"🚀{ev['name']}")
+
+        # 5. 자산 흐름 업데이트
+        net_flow = y_income - (4.0 + k_total + tax + interest + ev_total) # 4.0은 기본 연생활비
+        c_re *= (1 + re_gr)
+        c_inv = (c_inv + net_flow) * (1 + inv_gr)
         
         total_asset = c_re + c_inv + c_cash
         res.append({
-            "연도": year, "나이": f"{h_age}/{w_age}",
-            "순자산": total_asset - c_debt, "총자산": total_asset,
-            "부채": c_debt, "부동산": c_re, "금융자산": c_inv, "예금": c_cash,
-            "이벤트": " ".join(events)
+            "연도": year, "나이": f"{h_age}/{w_age}", "총자산": total_asset, "순자산": total_asset - c_debt,
+            "부동산": c_re, "금융자산": c_inv, "예금": c_cash, "부채": c_debt, "연수입": y_income,
+            "이벤트": " ".join(events_text)
         })
         c_h_sal *= (1 + h_inc); c_w_sal *= (1 + w_inc)
     return pd.DataFrame(res)
 
 df = run_sim()
 
-# --- 메인 대시보드 UI ---
-tabs = st.tabs(["📊 통합 시뮬레이션", "📑 상세 데이터"])
+# --- 결과 시각화 UI ---
+tab_main, tab_data = st.tabs(["📊 자산 시뮬레이션", "📑 상세 데이터"])
 
-with tabs[0]:
-    # 기간 선택
-    p_choice = st.radio("보기 기간 설정", ["5년", "10년", "20년", "30년", "전체"], horizontal=True)
-    p_map = {"5년":5, "10년":10, "20년":20, "30년":30, "전체":71}
-    sub_df = df.head(p_map[p_choice])
+with tab_main:
+    # 1. 기간 필터
+    p_choice = st.radio("조회 기간", ["5년", "10년", "20년", "30년", "전체"], horizontal=True)
+    p_val = {"5년":5, "10년":10, "20년":20, "30년":30, "전체":71}[p_choice]
+    sub_df = df.head(p_val)
 
-    # [메인 그래프] 총자산 & 순자산
+    # 2. 메인 그래프 (총자산/순자산/부채 + 이벤트 표시)
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=sub_df["연도"], y=sub_df["순자산"], name="순자산(Net)", fill='tozeroy', 
-                             line=dict(color='#2ecc71', width=4)))
-    fig.add_trace(go.Scatter(x=sub_df["연도"], y=sub_df["총자산"], name="총자산(Total)", 
-                             line=dict(color='#3498db', width=2, dash='dot')))
+    fig.add_trace(go.Scatter(x=sub_df["연도"], y=sub_df["순자산"], name="순자산", fill='tozeroy', line=dict(color='#27ae60', width=4)))
+    fig.add_trace(go.Scatter(x=sub_df["연도"], y=sub_df["총자산"], name="총자산", line=dict(color='#2980b9', width=2, dash='dot')))
+    fig.add_trace(go.Bar(x=sub_df["연도"], y=sub_df["부채"], name="부채", marker_color='#c0392b', opacity=0.3))
     
-    # 이벤트 어노테이션 (가독성 증대)
+    # 이벤트 텍스트 표시
     for _, row in sub_df.iterrows():
         if row["이벤트"]:
             fig.add_annotation(x=row["연도"], y=row["총자산"], text=f"<b>{row['이벤트']}</b>", 
-                               showarrow=True, arrowhead=2, bgcolor="#ffeb3b", font=dict(size=14))
+                               showarrow=True, arrowhead=2, bgcolor="#f1c40f", font=dict(size=13))
 
-    fig.update_layout(title="연도별 자산 성장 추이 (단위: 억원)", hovermode="x unified",
-                      font=dict(size=15), height=550, plot_bgcolor='rgba(0,0,0,0)')
+    fig.update_layout(title=f"우리 가족 자산 성장 추이 ({p_choice})", hovermode="x unified",
+                      font=dict(size=14), height=550, plot_bgcolor='white')
     st.plotly_chart(fig, use_container_width=True)
 
-    # [세부 자산 막대 그래프]
-    st.markdown("### 🔍 항목별 상세 분석 (부동산 / 금융자산 / 부채)")
-    c1, c2, c3 = st.columns(3)
+    # 3. 4분할 세부 그래프 (1/4 크기, 막대 그래프)
+    st.markdown("### 🔍 자산군별 세부 추이 (막대)")
+    c1, c2, c3, c4 = st.columns(4)
     
-    with c1:
-        f1 = go.Figure(go.Bar(x=sub_df["연도"], y=sub_df["부동산"], name="부동산", marker_color='#e67e22'))
-        f1.update_layout(title="부동산 가액", height=300, font=dict(size=12)); st.plotly_chart(f1, use_container_width=True)
-    with c2:
-        f2 = go.Figure(go.Bar(x=sub_df["연도"], y=sub_df["금융자산"], name="금융자산", marker_color='#9b59b6'))
-        f2.update_layout(title="금융자산 잔액", height=300, font=dict(size=12)); st.plotly_chart(f2, use_container_width=True)
-    with c3:
-        f3 = go.Figure(go.Bar(x=sub_df["연도"], y=sub_df["부채"], name="부채", marker_color='#e74c3c'))
-        f3.update_layout(title="대출 잔액", height=300, font=dict(size=12)); st.plotly_chart(f3, use_container_width=True)
+    def make_sub_chart(col_name, title, color):
+        f = go.Figure(go.Bar(x=sub_df["연도"], y=sub_df[col_name], name=title, marker_color=color))
+        f.update_layout(title=title, height=250, margin=dict(l=10, r=10, t=40, b=10), showlegend=False)
+        return f
 
-with tabs[1]:
-    st.subheader("📋 시뮬레이션 상세 수치 테이블")
+    c1.plotly_chart(make_sub_chart("부동산", "🏠 부동산 가액", "#e67e22"), use_container_width=True)
+    c2.plotly_chart(make_sub_chart("금융자산", "📈 금융투자 잔액", "#9b59b6"), use_container_width=True)
+    c3.plotly_chart(make_sub_chart("부채", "📉 대출 잔액", "#e74c3c"), use_container_width=True)
+    c4.plotly_chart(make_sub_chart("연수입", "💵 연간 수입(급여+연금)", "#16a085"), use_container_width=True)
+
+with tab_data:
+    st.subheader("📋 연도별 시뮬레이션 데이터 상세 (단위: 억원)")
     st.dataframe(df.style.format("{:.2f}"), use_container_width=True)
