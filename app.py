@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 # 1. 페이지 설정 및 프리미엄 디자인 UI/UX
 st.set_page_config(page_title="우리 가족 자산 마스터 v16.0", layout="wide")
 
-# CSS: 연한 하늘색 사이드바(검정 글씨) 및 고가독성 레이아웃 유지
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
@@ -15,7 +14,6 @@ st.markdown("""
         font-size: 20px !important; 
     }
     
-    /* 왼쪽 사이드바: 연한 하늘색 바탕 + 검정 글씨 */
     section[data-testid="stSidebar"] {
         background-color: #e0f2fe !important;
         border-right: 1px solid #bae6fd;
@@ -86,32 +84,49 @@ with st.sidebar.expander("📈 금융 투자 자산 설정", expanded=False):
     inv_gr = st.number_input("기대 수익률(%)", value=7.0, key="inv_gr_in") / 100
     inv_ratio = st.slider("💰 흑자 시 투자 비중(%)", 0, 100, 90, key="inv_rat_in")
 
-# (5) 대출 관리
+# (5) 대출 관리 (오더: 갈아타기 대출 동적 생성)
 with st.sidebar.expander("💳 대출 및 상환 방식", expanded=False):
+    st.markdown("**기존 대출 설정**")
     debt_init = st.number_input("현재 대출 잔액(만)", value=60000, key="debt_ini_in")
     debt_r = st.number_input("기본 대출 금리(%)", value=4.0, key="debt_r_in") / 100
     debt_term = st.number_input("상환 기간(년)", value=30, key="debt_t_in")
     debt_type = st.selectbox("상환 방식 선택", ["원리금균등", "원금균등"], key="debt_tp_in")
-    st.info("💡 부동산 갈아타기 시 추가되는 대출은 이 설정과 상환 로직을 공유합니다.")
+    
+    # 부동산 갈아타기가 있을 경우 대출 탭에 조건 설정창 자동 생성
+    if st.session_state.re_trades:
+        st.markdown("---")
+        st.markdown("**🔄 갈아타기 신규 대출 조건**")
+        for i, tr in enumerate(st.session_state.re_trades):
+            st.caption(f"📍 갈아타기 #{i+1} ({tr.get('year', start_yr+10)}년 실행)")
+            c1, c2 = st.columns(2)
+            tr['new_debt_r'] = c1.number_input(f"신규 금리(%) {i}", value=tr.get('new_debt_r', 4.0), key=f"nd_r_{i}") / 100
+            tr['new_debt_term'] = c2.number_input(f"신규 기간(년) {i}", value=tr.get('new_debt_term', 30), key=f"nd_t_{i}")
+            tr['new_debt_type'] = st.selectbox(f"신규 상환 방식 {i}", ["원리금균등", "원금균등"], index=0 if tr.get('new_debt_type', '원리금균등') == '원리금균등' else 1, key=f"nd_tp_{i}")
 
 # (6) 부동산 갈아타기 계획
 with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
     re_init_val = st.number_input("현재 집 가액(만)", value=150000, key="re_ini_in")
     re_gr_rate = st.number_input("부동산 상승률(%)", value=4.0, key="re_gr_in") / 100
     if st.button("➕ 갈아타기 추가"):
-        st.session_state.re_trades.append({"year": start_yr+10, "new_price": 300000, "use_inv": 0, "use_debt": 0, "use_cash": 0})
+        st.session_state.re_trades.append({"year": start_yr+10, "new_price": 300000, "use_inv": 0, "new_debt_amt": debt_init, "use_cash": 0})
     
     for i, tr in enumerate(st.session_state.re_trades):
         st.markdown(f"**📍 계획 #{i+1}**")
         tr['year'] = st.number_input(f"매수 연도 {i}", start_yr, 2090, tr['year'], key=f"tr_y_{i}")
+        tr['new_price'] = st.number_input(f"신규 주택 매수가(만) {i}", value=tr.get('new_price', 300000), step=10000, key=f"tr_np_{i}")
+        
         est_sale = re_init_val * ((1 + re_gr_rate)**(max(0, tr['year'] - start_yr))) * 0.95
         acq_tax = tr['new_price'] * 0.033
         gap = tr['new_price'] + acq_tax - est_sale
-        st.info(f"매각대금(세후 예상): {est_sale/10000:.2f}억 / 필요 Gap: {gap/10000:.2f}억")
+        
+        st.info(f"예상 매각대금(세후): {est_sale/10000:.2f}억\n\n필요 Gap: {gap/10000:.2f}억 (기존 대출상환 미반영)")
+        st.caption("🔻 자금 조달 계획 (합산하여 남고 모자란 현금은 예금에 자동 정산)")
+        
         c1, c2, c3 = st.columns(3)
-        tr['use_inv'] = c1.number_input(f"금융 활용{i}", value=tr['use_inv'], key=f"tr_inv_{i}")
-        tr['use_debt'] = c2.number_input(f"대출 추가{i}", value=tr['use_debt'], key=f"tr_debt_{i}")
-        tr['use_cash'] = c3.number_input(f"예금 활용{i}", value=tr['use_cash'], key=f"tr_cash_{i}")
+        tr['use_inv'] = c1.number_input(f"금융 매도(만){i}", value=tr.get('use_inv', 0), step=1000, key=f"tr_inv_{i}")
+        tr['new_debt_amt'] = c2.number_input(f"신규 대출 총액{i}", value=tr.get('new_debt_amt', 60000), step=5000, key=f"tr_debt_{i}")
+        tr['use_cash'] = c3.number_input(f"보유 예금(만){i}", value=tr.get('use_cash', 0), step=1000, key=f"tr_cash_{i}")
+        
         if st.button(f"🗑️ 계획 #{i+1} 삭제", key=f"re_del_{i}"): 
             st.session_state.re_trades.pop(i)
             st.rerun()
@@ -122,7 +137,12 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
         st.session_state.kids.append({"name": f"자녀{len(st.session_state.kids)+1}", "birth": start_yr+1, "costs": [100, 150, 200, 250, 300]})
     
     for i, kid in enumerate(st.session_state.kids):
-        st.write(f"👶 **{kid['name']}**")
+        col1, col2 = st.columns([3, 1])
+        col1.write(f"👶 **{kid['name']}**")
+        if col2.button("삭제", key=f"k_del_{i}"):
+            st.session_state.kids.pop(i)
+            st.rerun()
+            
         kid['birth'] = st.number_input(f"출생년 {i}", 2024, 2050, kid['birth'], key=f"kb_{i}")
         c1, c2 = st.columns(2)
         kid['costs'][0] = c1.number_input(f"영유아 {i}", value=kid['costs'][0], key=f"kc0_{i}")
@@ -136,7 +156,12 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
         st.session_state.events.append({"name": "이벤트", "year": start_yr+3, "cost": 6000})
     
     for i, ev in enumerate(st.session_state.events):
-        ev['name'] = st.text_input(f"명칭 {i}", ev['name'], key=f"ev_n_{i}")
+        col1, col2 = st.columns([3, 1])
+        ev['name'] = col1.text_input(f"명칭 {i}", ev['name'], key=f"ev_n_{i}")
+        if col2.button("삭제", key=f"ev_del_{i}"):
+            st.session_state.events.pop(i)
+            st.rerun()
+            
         ev['year'] = st.number_input(f"년도 {i}", start_yr, 2095, ev['year'], key=f"ev_y_{i}")
         ev['cost'] = st.number_input(f"비용 {i}", 0, 1000000, ev['cost'], key=f"ev_c_{i}")
 
@@ -157,6 +182,9 @@ def run_simulation():
     c_debt = debt_init
     c_h_sal, c_w_sal = h_sal, w_sal
     
+    # 동적 대출 조건 변수
+    curr_debt_r = debt_r
+    curr_debt_type = debt_type
     rem_debt_term = debt_term
 
     for year in range(start_yr, 2096):
@@ -171,21 +199,36 @@ def run_simulation():
         if w_age >= 65: pension += (w_p_amt * 12)
         total_income_y = inc_h + inc_w + pension
         
-        # 2. 갈아타기 및 대출 변동
+        # 2. 갈아타기 (대출 완전 갱신 및 현실적 자금 흐름 반영)
         for tr in st.session_state.re_trades:
             if year == tr['year']:
                 t_gain = max(0, c_re - c_re_base) * 0.20
                 t_acq = tr['new_price'] * 0.033
                 
+                # 매수 필요 자금 (순수 집값 차액)
+                est_sale_actual = c_re * 0.95
+                cash_needed = tr['new_price'] - est_sale_actual
+                
+                # 조달 자금 반영
+                new_debt = tr.get('new_debt_amt', c_debt) 
+                debt_cash_flow = new_debt - c_debt  # 대출 증가분은 플러스 현금
+                
                 c_inv -= tr['use_inv']
-                c_debt += tr['use_debt']
                 c_cash -= tr['use_cash']
                 
+                # 매수 후 남거나 모자란 자금은 예금(c_cash)에 반영
+                c_cash += (tr['use_inv'] + tr['use_cash'] + debt_cash_flow - cash_needed)
+                
+                # 자산 상태 업데이트
+                c_debt = new_debt
                 c_re = tr['new_price']
                 c_re_base = tr['new_price']
                 
-                if tr['use_debt'] > 0:
-                    rem_debt_term = debt_term
+                # 신규 대출 조건으로 엎어치기
+                curr_debt_r = tr.get('new_debt_r', curr_debt_r)
+                curr_debt_type = tr.get('new_debt_type', curr_debt_type)
+                rem_debt_term = tr.get('new_debt_term', debt_term)
+                
                 ev_list.append("🏠갈아타기")
 
         # 3. 세금 및 양육비
@@ -203,13 +246,13 @@ def run_simulation():
             elif 20<=ka<=23: k_total += kid['costs'][4]*12
             if year == kid['birth']: ev_list.append(f"👶{kid['name']} 탄생")
 
-        # 4. 부채 상환
-        interest_a = c_debt * debt_r
+        # 4. 부채 상환 (동적 이율, 기간 적용)
+        interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
         
         if c_debt > 0 and rem_debt_term > 0:
-            if debt_type == "원리금균등":
-                pmt = (c_debt * debt_r * (1+debt_r)**rem_debt_term) / ((1+debt_r)**rem_debt_term - 1) if debt_r > 0 else (c_debt / rem_debt_term)
+            if curr_debt_type == "원리금균등":
+                pmt = (c_debt * curr_debt_r * (1+curr_debt_r)**rem_debt_term) / ((1+curr_debt_r)**rem_debt_term - 1) if curr_debt_r > 0 else (c_debt / rem_debt_term)
                 principal_a = pmt - interest_a
                 repay_a = pmt
             else:
