@@ -1,130 +1,136 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from datetime import datetime
 
 # 페이지 설정
-st.set_page_config(page_title="우리집 재무 Plan 대시보드", layout="wide")
+st.set_page_config(page_title="가족 자산 관리 대시보드", layout="wide")
 
-st.title("💰 개인 자산 현황 및 향후 계획 Dashboard")
-st.markdown("가정 사항을 수정하면 하단의 자산 시뮬레이션 결과가 즉시 업데이트됩니다.")
+# --- 전역 설정 및 스타일 ---
+st.title("👨‍👩‍👧‍👦 우리 가족 미래 자산 시뮬레이터")
+st.markdown("95년생 가장의 100세(2095년)까지의 여정")
 
-# --- 사이드바: 주요 가정 사항 입력 ---
-st.sidebar.header("⚙️ 주요 가정 사항")
+# --- 사이드바: 주요 가정 사항 ---
+st.sidebar.header("📍 기본 가정")
+user_birth_year = 1995
+start_year = 2025
+end_year = 2095
 
-# 1. 수입 및 지출 관련
-with st.sidebar.expander("💳 수입 및 지출", expanded=True):
-    base_salary = st.number_input("현재 월급 (세후, 만원)", value=830)
-    salary_growth = st.slider("연봉 인상율 (%)", 0.0, 10.0, 3.0, 0.5) / 100
-    incentive_rate = st.slider("성과급 비율 (연봉 대비 %)", 0.0, 50.0, 10.0, 1.0) / 100
-    living_expenses = st.number_input("연간 생활비 (만원)", value=2300)
-    living_exp_growth = st.slider("생활비 인상율 (%)", 0.0, 5.0, 3.0, 0.5) / 100
+with st.sidebar.expander("💰 자산 초기값 & 수익률", expanded=True):
+    # 부동산
+    re_init = st.number_input("부동산 시작 (억원)", value=14.0, step=0.1)
+    re_rate = st.slider("부동산 상승률 (%)", 0.0, 10.0, 4.0) / 100
+    # 금융투자
+    inv_init = st.number_input("금융투자 시작 (억원)", value=0.6, step=0.1)
+    inv_rate = st.slider("투자 수익률 (%)", 0.0, 15.0, 8.0) / 100
+    # 예금 및 기타
+    cash_init = st.number_input("예금/기타 시작 (억원)", value=0.05, step=0.01)
+    cash_rate = st.slider("예금 금리 (%)", 0.0, 5.0, 2.0) / 100
 
-# 2. 투자 및 자산 관련
-with st.sidebar.expander("📈 투자 및 부동산", expanded=True):
-    inv_return_rate = st.slider("투자 수익율 (%)", 0.0, 15.0, 8.0, 0.5) / 100
-    re_return_rate = st.slider("부동산 상승율 (%)", 0.0, 10.0, 4.0, 0.5) / 100
-    initial_re_asset = st.number_input("현재 부동산 자산 (만원)", value=140000)
-    initial_inv_principal = st.number_input("현재 투자 원금 (만원)", value=5900)
+with st.sidebar.expander("👶 자녀 계획 & 양육비", expanded=False):
+    num_kids = st.number_input("자녀 수", min_value=0, max_value=3, value=1)
+    kid_plans = []
+    for i in range(num_kids):
+        st.write(f"--- {i+1}번째 자녀 ---")
+        birth = st.number_input(f"{i+1}번 자녀 출산년도", value=2027 + (i*2), key=f"kid_birth_{i}")
+        kid_plans.append(birth)
+    
+    st.info("시기별 월 양육비(만원)")
+    cost_baby = st.number_input("유아기(0~7세)", value=100)
+    cost_elem = st.number_input("초등(8~13세)", value=120)
+    cost_mid = st.number_input("중등(14~16세)", value=150)
+    cost_high = st.number_input("고등(17~19세)", value=180)
+    cost_univ = st.number_input("대학(20~23세)", value=250)
 
-# 3. 부채 및 가족
-with st.sidebar.expander("🏠 대출 및 육아", expanded=True):
-    mortgage = st.number_input("주담대 잔액 (만원)", value=60000)
-    interest_rate = st.slider("대출 이자율 (%)", 0.0, 7.0, 3.9, 0.1) / 100
-    num_kids = st.radio("자녀 수", [0, 1, 2], index=1)
-    retirement_age = st.slider("은퇴 시점 (나이)", 45, 65, 55)
+with st.sidebar.expander("🚗 특별 이벤트 (육아휴직, 차량 등)", expanded=False):
+    event_year = st.number_input("이벤트 발생년도", value=2030)
+    event_cost = st.number_input("이벤트 비용 (억원)", value=0.5, step=0.1)
+    event_name = st.text_input("이벤트 명", "차량 구매/육아휴직")
 
 # --- 시뮬레이션 로직 ---
 def run_simulation():
-    data = []
-    current_age = 25
-    years = 100 - current_age # 100세까지 시뮬레이션
+    rows = []
+    curr_re = re_init
+    curr_inv = inv_init
+    curr_cash = cash_init
     
-    # 초기값 세팅
-    curr_re = initial_re_asset
-    curr_inv_principal = initial_inv_principal
-    curr_inv_returns = initial_inv_principal * (1 + inv_return_rate)
-    curr_debt = mortgage
-    curr_salary = base_salary
-    
-    for i in range(years + 1):
-        age = current_age + i
+    # 단순화를 위한 수입/지출 가설 (억원 단위)
+    annual_savings = 0.5 # 연간 저축액 가설 (수정 가능)
+
+    for year in range(start_year, end_year + 1):
+        age = year - user_birth_year
         
-        # 1. 수입 계산 (은퇴 전까지만)
-        if age <= retirement_age:
-            annual_pay = curr_salary * 12
-            incentive = annual_pay * incentive_rate
-            other_income = 500 # 기타수입 고정값 예시
-        else:
-            annual_pay = 0
-            incentive = 0
-            other_income = 2000 # 국민연금 등 가정
-            
-        # 2. 지출 계산
-        curr_interest = curr_debt * interest_rate
-        # 육아비용 (자녀 나이에 따른 단순 가중치 적용 가능)
-        childcare = (960 if num_kids >= 1 else 0) + (900 if num_kids >= 2 else 0)
+        # 자녀 양육비 계산 (억원 단위 환산)
+        total_kid_cost = 0
+        for b_year in kid_plans:
+            k_age = year - b_year
+            if 0 <= k_age <= 7: total_kid_cost += (cost_baby * 12) / 10000
+            elif 8 <= k_age <= 13: total_kid_cost += (cost_elem * 12) / 10000
+            elif 14 <= k_age <= 16: total_kid_cost += (cost_mid * 12) / 10000
+            elif 17 <= k_age <= 19: total_kid_cost += (cost_high * 12) / 10000
+            elif 20 <= k_age <= 23: total_kid_cost += (cost_univ * 12) / 10000
         
-        # 이벤트 지출 (특정 나이에 발생)
-        event_cost = 0
-        if age == 27: event_cost = 5000 # 출산 및 차량
-        if age == 33: event_cost = 80000 # 상급지 이동 등
+        # 이벤트 반영
+        current_event_cost = event_cost if year == event_year else 0
         
-        # 3. 여유 자금 및 부채 상환
-        surplus = (annual_pay + incentive + other_income) - (living_expenses + curr_interest + childcare + event_cost)
-        debt_repayment = min(curr_debt, 500 + (surplus * 0.2 if surplus > 0 else 0)) # 매년 최소 500만원 + 여유분 20% 상환 가정
+        # 자산 성장
+        curr_re *= (1 + re_rate)
+        curr_inv *= (1 + inv_rate)
+        curr_cash *= (1 + cash_rate)
         
-        invest_amount = surplus - debt_repayment
+        # 저축액 배분 (금융투자에 합산 가정)
+        net_savings = annual_savings - total_kid_cost - current_event_cost
+        curr_inv += net_savings
         
-        # 4. 자산 업데이트
-        curr_re *= (1 + re_return_rate)
-        curr_inv_returns = (curr_inv_returns + invest_amount) * (1 + inv_return_rate)
-        curr_debt -= debt_repayment
+        total_asset = curr_re + curr_inv + curr_cash
         
-        total_asset = curr_re + curr_inv_returns + 500 # 예금 500 고정
-        net_asset = total_asset - curr_debt
-        
-        data.append({
-            "나이": age,
-            "총 자산": round(total_asset),
-            "순 자산": round(net_asset),
-            "부동산": round(curr_re),
-            "금융자산": round(curr_inv_returns),
-            "부채": round(curr_debt),
-            "연봉": round(annual_pay),
-            "여유자금": round(surplus)
+        rows.append({
+            "연도": f"{year}년",
+            "나이": f"{age}세",
+            "부동산": round(curr_re, 2),
+            "금융 투자": round(curr_inv, 2),
+            "예금": round(curr_cash, 2),
+            "합계": round(total_asset, 2)
         })
-        
-        # 다음 해를 위한 수입/지출 증가율 반영
-        curr_salary *= (1 + salary_growth)
-        # living_expenses 는 여기서 직접 업데이트하거나 루프 밖에서 인덱스 처리
-        
-    return pd.DataFrame(data)
+    return pd.DataFrame(rows)
 
-df_result = run_simulation()
+df = run_simulation()
 
-# --- 결과 시각화 ---
-col1, col2 = st.columns([2, 1])
+# --- 대시보드 표시 ---
+# 1. 탭 구성 (기간별 보기)
+st.subheader("📊 기간별 자산 전망 (단위: 억원)")
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["10년", "20년", "30년", "50년", "전체"])
 
-with col1:
-    st.subheader("📊 자산 성장 시뮬레이션")
+def draw_chart(data):
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=df_result["나이"], y=df_result["총 자산"], name="총 자산", fill='tozeroy'))
-    fig.add_trace(go.Scatter(x=df_result["나이"], y=df_result["순 자산"], name="순 자산", line=dict(color='firebrick', width=4)))
-    fig.update_layout(hovermode="x unified", yaxis_title="만원")
+    for col in ["부동산", "금융 투자", "예금"]:
+        fig.add_trace(go.Bar(x=data["연도"] + " (" + data["나이"] + ")", y=data[col], name=col))
+    
+    fig.update_layout(barmode='stack', hovermode="x unified", height=500)
     st.plotly_chart(fig, use_container_width=True)
 
-with col2:
-    st.subheader("💡 분석 결과")
-    final_net_asset = df_result.iloc[retirement_age - 25]["순 자산"]
-    st.metric("은퇴 시점 순자산", f"{final_net_asset:,.0f} 만원")
-    
-    peak_debt = df_result["부채"].max()
-    st.metric("최대 부채 규모", f"{peak_debt:,.0f} 만원")
+with tab1: draw_chart(df.head(10))
+with tab2: draw_chart(df.head(20))
+with tab3: draw_chart(df.head(30))
+with tab4: draw_chart(df.head(50))
+with tab5: draw_chart(df)
 
-# 상세 데이터 표
-st.subheader("📋 연도별 상세 데이터")
-st.dataframe(df_result, use_container_width=True)
+# 2. 데이터 수정 및 확인 섹션
+st.divider()
+st.subheader("📑 연도별 자산 상세 데이터")
+st.info("아래 표에서 수치를 확인하거나, 왼쪽 사이드바에서 가정을 수정해 보세요.")
 
-# 엑셀 다운로드 기능
-csv = df_result.to_csv(index=False).encode('utf-8-sig')
-st.download_button("결과를 CSV로 다운로드", csv, "financial_plan_result.csv", "text/csv")
+# 가독성을 위해 데이터프레임 스타일 적용
+st.dataframe(
+    df,
+    column_config={
+        "부동산": st.column_config.NumberColumn(format="%.2f 억"),
+        "금융 투자": st.column_config.NumberColumn(format="%.2f 억"),
+        "예금": st.column_config.NumberColumn(format="%.2f 억"),
+        "합계": st.column_config.NumberColumn(format="%.2f 억"),
+    },
+    use_container_width=True,
+    hide_index=True
+)
+
+st.success("Tip: 왼쪽 사이드바에서 자녀 출산년도를 바꾸면 즉시 그래프의 성장 곡선이 변화합니다.")
