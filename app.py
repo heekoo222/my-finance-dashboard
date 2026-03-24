@@ -55,8 +55,8 @@ st.sidebar.title("🛠️ 재무 전략 설정")
 with st.sidebar.expander("📅 시나리오 시작 시점", expanded=True):
     start_yr = st.number_input("시작 연도", value=2026, min_value=2024, key="sys_start_yr")
 
-# (2) 부부 소득 및 상여금 (은퇴 연도 직관적 선택 기능 추가)
-with st.sidebar.expander("👤 부부 소득 및 상여금", expanded=True):
+# (2) 부부 소득, 퇴직금 및 은퇴 시점
+with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=True):
     h_tab, w_tab = st.tabs(["남편(95)", "아내(94)"])
     
     with h_tab:
@@ -64,12 +64,12 @@ with st.sidebar.expander("👤 부부 소득 및 상여금", expanded=True):
         h_bonus_r = st.number_input("남편 상여비율(%)", value=20.0, key="h_br_in") / 100
         h_inc = st.number_input("급여 인상률(%)", value=3.0, key="h_i_in") / 100
         
-        # 나이/연도 선택 콤보박스 생성 (40세~80세)
         h_ages = list(range(40, 81))
         h_opts = [f"{1995 + a}년 ({a}세)" for a in h_ages]
         h_ret_sel = st.selectbox("남편 은퇴 시점", h_opts, index=h_ages.index(55), key="h_ret_in")
         h_ret_age = h_ages[h_opts.index(h_ret_sel)]
         
+        h_sev_pay = st.number_input("예상 퇴직금(만)", value=10000, step=1000, key="h_sev_in")
         h_p_amt = st.number_input("월 예상연금(65세~)", value=150, key="h_p_in")
         
     with w_tab:
@@ -77,12 +77,12 @@ with st.sidebar.expander("👤 부부 소득 및 상여금", expanded=True):
         w_bonus_r = st.number_input("아내 상여비율(%)", value=20.0, key="w_br_in") / 100
         w_inc = st.number_input("급여 인상률(%)", value=3.0, key="w_inc_in") / 100
         
-        # 나이/연도 선택 콤보박스 생성
         w_ages = list(range(40, 81))
         w_opts = [f"{1994 + a}년 ({a}세)" for a in w_ages]
         w_ret_sel = st.selectbox("아내 은퇴 시점", w_opts, index=w_ages.index(55), key="w_r_in")
         w_ret_age = w_ages[w_opts.index(w_ret_sel)]
         
+        w_sev_pay = st.number_input("예상 퇴직금(만)", value=8000, step=1000, key="w_sev_in")
         w_p_amt = st.number_input("아내 월 연금(65세~)", value=130, key="w_p_in")
 
 # (3) 생활비 레버
@@ -121,7 +121,6 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
     if st.button("➕ 갈아타기 추가"):
         st.session_state.re_trades.append({"year": start_yr+10, "new_price": 300000, "use_inv": 0, "new_debt_amt": debt_init, "use_cash": 0})
     
-    # 여러 번 갈아타기를 위한 추정 로직용 임시 변수
     temp_price = re_init_val
     temp_yr = start_yr
     
@@ -130,7 +129,6 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
         tr['year'] = st.number_input(f"매수 연도 {i}", start_yr, 2090, tr['year'], key=f"tr_y_{i}")
         tr['new_price'] = st.number_input(f"신규 주택 매수가(만) {i}", value=tr.get('new_price', 300000), step=10000, key=f"tr_np_{i}")
         
-        # 다중 거래 시 직전 주택 가격 기준으로 매각 대금 추정
         est_sale = temp_price * ((1 + re_gr_rate)**(max(0, tr['year'] - temp_yr))) * 0.95
         acq_tax = tr['new_price'] * 0.033
         gap = tr['new_price'] + acq_tax - est_sale
@@ -143,7 +141,6 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
         tr['new_debt_amt'] = c2.number_input(f"신규 대출 총액{i}", value=tr.get('new_debt_amt', 60000), step=5000, key=f"tr_debt_{i}")
         tr['use_cash'] = c3.number_input(f"보유 예금(만){i}", value=tr.get('use_cash', 0), step=1000, key=f"tr_cash_{i}")
         
-        # 다음 루프를 위한 갱신
         temp_price = tr['new_price']
         temp_yr = tr['year']
         
@@ -185,12 +182,16 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
         ev['year'] = st.number_input(f"년도 {i}", start_yr, 2095, ev['year'], key=f"ev_y_{i}")
         ev['cost'] = st.number_input(f"비용 {i}", 0, 1000000, ev['cost'], key=f"ev_c_{i}")
 
-# (8) 은퇴 배당 자산 배분
-with st.sidebar.expander("👵 은퇴 배당 자산 배분", expanded=False):
-    st.write("은퇴 시점 금융자산을 아래 비율로 나눕니다.")
+# (8) 은퇴 시점 리밸런싱 & 배당 자산 배분
+with st.sidebar.expander("👵 은퇴 시점 리밸런싱 & 배당", expanded=False):
+    st.markdown("**1️⃣ 주택 연금화 (다운사이징)**")
+    ret_re_down_ratio = st.slider("최종 은퇴 시 부동산 매각 비율(%)", 0, 100, 30, step=10, key="ret_down_r")
+    st.caption("매각 대금은 양도세 정산 후 전액 금융자산으로 즉시 편입됩니다.")
+    st.markdown("---")
+    st.markdown("**2️⃣ 은퇴 후 금융자산 배분**")
     s_schd = st.slider("SCHD (배당성장) %", 0, 100, 25, key="ret_schd")
     s_jepq = st.slider("JEPQ (고배당) %", 0, 100, 25, key="ret_jepq")
-    st.info(f"기존 금융자산 유지: {100 - s_schd - s_jepq}%")
+    st.info(f"기존 금융자산 유지(재투자): {100 - s_schd - s_jepq}%")
 
 # --- 4. 시뮬레이션 엔진 ---
 def run_simulation():
@@ -205,34 +206,48 @@ def run_simulation():
     curr_debt_r = debt_r
     curr_debt_type = debt_type
     rem_debt_term = debt_term
+    
+    h_ret_year = 1995 + h_ret_age
+    w_ret_year = 1994 + w_ret_age
+    final_ret_year = max(h_ret_year, w_ret_year)
 
     for year in range(start_yr, 2096):
         h_age, w_age = year - 1995, year - 1994
         ev_list, pension = [], 0
-        t_acq, t_gain = 0, 0
+        t_acq_total, t_gain_total = 0, 0
         
-        # 1. 소득 로직 (정확한 나이 연동)
+        # 1. 소득 및 퇴직금 편입 로직
         inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
         inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
         if h_age >= 65: pension += (h_p_amt * 12)
         if w_age >= 65: pension += (w_p_amt * 12)
         total_income_y = inc_h + inc_w + pension
         
-        # 2. 갈아타기 (물리적 현금 입출금 기반 정산)
+        if year == h_ret_year:
+            c_inv += h_sev_pay
+            ev_list.append("👨‍🦳남편 은퇴(퇴직금)")
+        if year == w_ret_year:
+            c_inv += w_sev_pay
+            ev_list.append("👩‍🦳아내 은퇴(퇴직금)")
+        
+        # 2. 부동산 갈아타기 (세금 이중차감 완벽 분리)
         for tr in st.session_state.re_trades:
             if year == tr['year']:
-                t_gain = max(0, c_re - c_re_base) * 0.20
-                t_acq = tr['new_price'] * 0.033
+                gain = max(0, c_re - c_re_base) * 0.20
+                acq = tr['new_price'] * 0.033
+                t_gain_total += gain
+                t_acq_total += acq
                 
-                c_cash += (c_re * 0.95)
-                c_cash -= c_debt
+                # 자금 조달 및 현금흐름 정산
+                c_cash += (c_re - gain) # 양도세 차감 후 순수 매각대금 입금
+                c_cash -= c_debt        # 기존 대출 상환
                 
                 c_inv -= tr['use_inv']
                 c_cash += tr['use_inv']
                 
                 new_debt = tr.get('new_debt_amt', 60000)
                 c_cash += new_debt
-                c_cash -= (tr['new_price'] + t_acq)
+                c_cash -= (tr['new_price'] + acq) # 신규 주택 매수 및 취득세
                 
                 c_debt = new_debt
                 c_re = tr['new_price']
@@ -244,12 +259,30 @@ def run_simulation():
                 
                 ev_list.append("🏠갈아타기")
 
-        # 3. 세금 및 양육비
+        # 3. 은퇴 시점 부동산 다운사이징 (리밸런싱)
+        if year == final_ret_year and ret_re_down_ratio > 0:
+            down_ratio = ret_re_down_ratio / 100
+            downsize_amt = c_re * down_ratio
+            base_cost = c_re_base * down_ratio
+            
+            ds_gain = max(0, downsize_amt - base_cost) * 0.20
+            t_gain_total += ds_gain
+            
+            # 양도세 정산 후 남은 금액을 즉시 금융투자 자산으로 편입!
+            net_proceeds = downsize_amt - ds_gain
+            c_inv += net_proceeds  
+            
+            c_re -= downsize_amt
+            c_re_base -= base_cost
+            ev_list.append(f"📉주택축소({ret_re_down_ratio}%)")
+
+        # 4. 일상 세금 및 양육비 (부동산 거래세 제외)
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
         t_fin_tax = (c_inv * 0.03) * 0.154 if c_inv > 0 else 0
         
-        total_tax_y = (total_income_y * 0.15) + t_hold + t_comp + t_gain + t_acq + t_fin_tax
+        # 거래세(t_gain_total, t_acq_total)는 자산 교환 시 차감했으므로 경상 지출에서 제외!
+        total_tax_y = (total_income_y * 0.15) + t_hold + t_comp + t_fin_tax
         
         k_total = 0
         for kid in st.session_state.kids:
@@ -261,7 +294,7 @@ def run_simulation():
             elif 20<=ka<=23: k_total += kid['costs'][4]*12
             if year == kid['birth']: ev_list.append(f"👶{kid['name']} 탄생")
 
-        # 4. 부채 상환
+        # 5. 부채 상환
         interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
         
@@ -277,9 +310,10 @@ def run_simulation():
         elif c_debt > 0:
             repay_a = interest_a
         
-        # 5. 지출 및 자산배분
+        # 6. 지출 및 자산배분 (현금흐름 폭포수 정산)
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         ev_cost = sum(ev['cost'] for ev in st.session_state.events if ev['year'] == year)
+        
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
         
@@ -307,7 +341,7 @@ def run_simulation():
             "예금_억": round(c_cash/10000, 2), "대출_억": round(c_debt/10000, 2),
             "총수입_만": round(total_income_y, 0), "월_순현금_만": round(net_flow_y/12, 0), "월_지출_만": round(total_exp_y/12, 0),
             "보유세_만": round(t_hold + t_comp, 0), "금융소득세_만": round(t_fin_tax, 0),
-            "양도세_만": round(t_gain, 0), "취득세_만": round(t_acq, 0),
+            "양도세_만": round(t_gain_total, 0), "취득세_만": round(t_acq_total, 0),
             "이벤트": ", ".join(ev_list) if ev_list else "없음"
         })
         c_h_sal *= (1 + h_inc)
@@ -375,9 +409,8 @@ with t_tab:
     st.plotly_chart(draw_premium_table(t_disp), use_container_width=True)
 
 with s_tab:
-    # 📌 가장 늦게 은퇴하는 사람의 연도를 '최종 은퇴 연도'로 계산
     final_ret_yr = max(1995 + h_ret_age, 1994 + w_ret_age)
-    st.header(f"🚩 최종 은퇴 연도: {final_ret_yr}년")
+    st.header(f"🚩 최종 은퇴 연도: {final_ret_yr}년 (주택 다운사이징 완료 후)")
     
     if final_ret_yr > 2095:
         st.warning("⚠️ 설정된 은퇴 연도가 시뮬레이션 종료 시점(2095년)을 초과합니다.")
@@ -385,12 +418,10 @@ with s_tab:
         ret_row = df_res[df_res["연도"] == final_ret_yr].iloc[0]
         c_inv_val = ret_row["금융자산_억"]
         
-        # 은퇴 시점 자산 배분 계산
         schd_amt = c_inv_val * (s_schd / 100)
         jepq_amt = c_inv_val * (s_jepq / 100)
         keep_amt = c_inv_val * ((100 - s_schd - s_jepq) / 100)
         
-        # 첫 달 예상 배당금 (월 단위)
         init_m_div = ((schd_amt * 0.035) + (jepq_amt * 0.095)) * 10000 / 12
         
         c1, c2, c3, c4 = st.columns(4)
@@ -408,7 +439,7 @@ with s_tab:
             j_p = sim_inv_val * (s_jepq/100)
             m_div = ((s_p * 0.035 * (1.05**(y-final_ret_yr))) + (j_p * 0.095)) * 10000 / 12
             div_data.append({"연도": y, "월_배당금": m_div})
-            sim_inv_val *= (1 + inv_gr) # 자산 원금 성장 가정
+            sim_inv_val *= (1 + inv_gr)
             
         df_div = pd.DataFrame(div_data)
         fig_div = go.Figure()
