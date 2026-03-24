@@ -43,10 +43,8 @@ st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v16
 st.markdown("---")
 
 # --- 2. 데이터 유지 (세션 스테이트) ---
-if 're_trades' not in st.session_state: 
-    st.session_state.re_trades = []
-if 'events' not in st.session_state: 
-    st.session_state.events = []
+if 're_trades' not in st.session_state: st.session_state.re_trades = []
+if 'events' not in st.session_state: st.session_state.events = []
 if 'kids' not in st.session_state:
     st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}]
 
@@ -57,21 +55,35 @@ st.sidebar.title("🛠️ 재무 전략 설정")
 with st.sidebar.expander("📅 시나리오 시작 시점", expanded=True):
     start_yr = st.number_input("시작 연도", value=2026, min_value=2024, key="sys_start_yr")
 
-# (2) 부부 소득 및 상여금
+# (2) 부부 소득 및 상여금 (은퇴 연도 직관적 선택 기능 추가)
 with st.sidebar.expander("👤 부부 소득 및 상여금", expanded=True):
     h_tab, w_tab = st.tabs(["남편(95)", "아내(94)"])
+    
     with h_tab:
         h_sal = st.number_input("남편 월급(만)", value=830, key="h_s_in")
         h_bonus_r = st.number_input("남편 상여비율(%)", value=20.0, key="h_br_in") / 100
         h_inc = st.number_input("급여 인상률(%)", value=3.0, key="h_i_in") / 100
-        h_ret_age = st.number_input("은퇴나이", value=55, key="h_ret_in")
-        h_p_amt = st.number_input("월 예상연금", value=150, key="h_p_in")
+        
+        # 나이/연도 선택 콤보박스 생성 (40세~80세)
+        h_ages = list(range(40, 81))
+        h_opts = [f"{1995 + a}년 ({a}세)" for a in h_ages]
+        h_ret_sel = st.selectbox("남편 은퇴 시점", h_opts, index=h_ages.index(55), key="h_ret_in")
+        h_ret_age = h_ages[h_opts.index(h_ret_sel)]
+        
+        h_p_amt = st.number_input("월 예상연금(65세~)", value=150, key="h_p_in")
+        
     with w_tab:
         w_sal = st.number_input("아내 월급(만)", value=500, key="w_s_in")
         w_bonus_r = st.number_input("아내 상여비율(%)", value=20.0, key="w_br_in") / 100
         w_inc = st.number_input("급여 인상률(%)", value=3.0, key="w_inc_in") / 100
-        w_ret_age = st.number_input("아내 은퇴나이", value=55, key="w_r_in")
-        w_p_amt = st.number_input("아내 월 연금", value=130, key="w_p_in")
+        
+        # 나이/연도 선택 콤보박스 생성
+        w_ages = list(range(40, 81))
+        w_opts = [f"{1994 + a}년 ({a}세)" for a in w_ages]
+        w_ret_sel = st.selectbox("아내 은퇴 시점", w_opts, index=w_ages.index(55), key="w_r_in")
+        w_ret_age = w_ages[w_opts.index(w_ret_sel)]
+        
+        w_p_amt = st.number_input("아내 월 연금(65세~)", value=130, key="w_p_in")
 
 # (3) 생활비 레버
 with st.sidebar.expander("💸 생활비 레버", expanded=False):
@@ -109,12 +121,17 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
     if st.button("➕ 갈아타기 추가"):
         st.session_state.re_trades.append({"year": start_yr+10, "new_price": 300000, "use_inv": 0, "new_debt_amt": debt_init, "use_cash": 0})
     
+    # 여러 번 갈아타기를 위한 추정 로직용 임시 변수
+    temp_price = re_init_val
+    temp_yr = start_yr
+    
     for i, tr in enumerate(st.session_state.re_trades):
         st.markdown(f"**📍 계획 #{i+1}**")
         tr['year'] = st.number_input(f"매수 연도 {i}", start_yr, 2090, tr['year'], key=f"tr_y_{i}")
         tr['new_price'] = st.number_input(f"신규 주택 매수가(만) {i}", value=tr.get('new_price', 300000), step=10000, key=f"tr_np_{i}")
         
-        est_sale = re_init_val * ((1 + re_gr_rate)**(max(0, tr['year'] - start_yr))) * 0.95
+        # 다중 거래 시 직전 주택 가격 기준으로 매각 대금 추정
+        est_sale = temp_price * ((1 + re_gr_rate)**(max(0, tr['year'] - temp_yr))) * 0.95
         acq_tax = tr['new_price'] * 0.033
         gap = tr['new_price'] + acq_tax - est_sale
         
@@ -125,6 +142,10 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
         tr['use_inv'] = c1.number_input(f"금융 매도(만){i}", value=tr.get('use_inv', 0), step=1000, key=f"tr_inv_{i}")
         tr['new_debt_amt'] = c2.number_input(f"신규 대출 총액{i}", value=tr.get('new_debt_amt', 60000), step=5000, key=f"tr_debt_{i}")
         tr['use_cash'] = c3.number_input(f"보유 예금(만){i}", value=tr.get('use_cash', 0), step=1000, key=f"tr_cash_{i}")
+        
+        # 다음 루프를 위한 갱신
+        temp_price = tr['new_price']
+        temp_yr = tr['year']
         
         if st.button(f"🗑️ 계획 #{i+1} 삭제", key=f"re_del_{i}"): 
             st.session_state.re_trades.pop(i)
@@ -177,7 +198,7 @@ def run_simulation():
     c_re = re_init_val
     c_re_base = re_init_val
     c_inv = inv_init
-    c_cash = 1000  # 초기 예금 세팅
+    c_cash = 1000  
     c_debt = debt_init
     c_h_sal, c_w_sal = h_sal, w_sal
     
@@ -190,7 +211,7 @@ def run_simulation():
         ev_list, pension = [], 0
         t_acq, t_gain = 0, 0
         
-        # 1. 소득
+        # 1. 소득 로직 (정확한 나이 연동)
         inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
         inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
         if h_age >= 65: pension += (h_p_amt * 12)
@@ -203,23 +224,16 @@ def run_simulation():
                 t_gain = max(0, c_re - c_re_base) * 0.20
                 t_acq = tr['new_price'] * 0.033
                 
-                # 기존 집 매각 대금 예금으로 입금
                 c_cash += (c_re * 0.95)
-                # 기존 대출 전액 상환 (예금에서 출금)
                 c_cash -= c_debt
                 
-                # 사용자가 지정한 금융자산 매도액 예금으로 편입
                 c_inv -= tr['use_inv']
                 c_cash += tr['use_inv']
                 
-                # 신규 대출 총액 예금으로 입금
                 new_debt = tr.get('new_debt_amt', 60000)
                 c_cash += new_debt
-                
-                # 신규 주택 매수 및 취득세 납부 (예금에서 출금)
                 c_cash -= (tr['new_price'] + t_acq)
                 
-                # 자산 및 대출 정보 갱신
                 c_debt = new_debt
                 c_re = tr['new_price']
                 c_re_base = tr['new_price']
@@ -230,12 +244,9 @@ def run_simulation():
                 
                 ev_list.append("🏠갈아타기")
 
-        # 3. 세금 (보수적 로직 적용) 및 양육비
-        # 부동산 보유세 (재산세 + 종부세 보수적 추정)
+        # 3. 세금 및 양육비
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
-        
-        # 금융소득세 (배당세 등: 금융자산의 3%를 수익금으로 보고 15.4% 과세)
         t_fin_tax = (c_inv * 0.03) * 0.154 if c_inv > 0 else 0
         
         total_tax_y = (total_income_y * 0.15) + t_hold + t_comp + t_gain + t_acq + t_fin_tax
@@ -272,19 +283,17 @@ def run_simulation():
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
         
-        # 흐름 정산
         if net_flow_y >= 0:
             c_inv += net_flow_y * (inv_ratio / 100)
             c_cash += net_flow_y * (1 - inv_ratio/100)
         else:
-            c_cash += net_flow_y  # 적자 시 일단 예금에서 뺌
+            c_cash += net_flow_y
             
-        # 🚨 잔고 기반 폭포수(Waterfall) 방어 로직 (버그 수정됨)
         if c_cash < 0:
-            c_inv += c_cash  # 예금 마이너스분을 투자자산 매도로 메꿈
+            c_inv += c_cash
             c_cash = 0
             if c_inv < 0:
-                c_debt -= c_inv  # 투자자산도 바닥나면 마이너스 통장(대출) 증가
+                c_debt -= c_inv
                 c_inv = 0
             
         c_re *= (1 + re_gr_rate)
@@ -308,8 +317,7 @@ def run_simulation():
 
 df_res = run_simulation()
 
-# --- 5. 대시보드 출력 UI 프리미엄화 ---
-# Plotly 테이블 렌더링 함수 (가시성 및 디자인 대폭 상향)
+# --- 5. 대시보드 출력 UI ---
 def draw_premium_table(df):
     fig = go.Figure(data=[go.Table(
         header=dict(values=list(df.columns),
@@ -332,7 +340,6 @@ with m_tab:
     period = st.radio("🔍 조회 기간", ["5년", "10년", "20년", "30년", "전체"], horizontal=True, index=4, key="p_sel")
     sub = df_res.head({"5년":5, "10년":10, "20년":20, "30년":30, "전체":len(df_res)}[period])
 
-    # 메인 차트
     fig = go.Figure()
     fig.add_trace(go.Bar(x=sub["연도"], y=sub["순자산_억"], name="순자산", marker_color='#10b981',
                          customdata=sub[["총자산_억", "대출_억"]],
@@ -342,7 +349,6 @@ with m_tab:
                       hoverlabel=dict(bgcolor="white", font_size=20, font_family="Noto Sans KR"))
     st.plotly_chart(fig, use_container_width=True)
 
-    # 서브 차트
     st.markdown("#### 🔍 세부 지표")
     def draw_mini(data, col, title, color):
         f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<extra></extra>"))
@@ -363,38 +369,55 @@ with m_tab:
 with t_tab:
     st.header("⚖️ 상세 세무 분석 (단위: 만원)")
     t_disp = df_res[["연도", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만"]].copy()
-    
-    # 세 자리수 콤마 텍스트 변환
     for col in ["보유세_만", "금융소득세_만", "양도세_만", "취득세_만"]:
         t_disp[col] = t_disp[col].apply(lambda x: f"{x:,.0f}")
-        
     t_disp.columns = ["연도", "🏠 보유세(재산+종부)", "📈 금융소득세(배당등)", "💸 양도세", "📝 취득세"]
     st.plotly_chart(draw_premium_table(t_disp), use_container_width=True)
 
 with s_tab:
-    st.header("👵 은퇴 배당 시뮬레이션")
-    f_ret_yr = start_yr + max((h_ret_age - (start_yr-1995)), (w_ret_age - (start_yr-1994)))
-    ret_row = df_res[df_res["연도"] == f_ret_yr].iloc[0]
-    div_data = []
-    c_inv_val = ret_row["금융자산_억"]
-    for y in range(f_ret_yr, 2096):
-        schd_p = c_inv_val * (s_schd/100)
-        jepq_p = c_inv_val * (s_jepq/100)
-        m_div = ((schd_p * 0.035 * (1.05**(y-f_ret_yr))) + (jepq_p * 0.095)) * 10000 / 12
-        div_data.append({"연도": y, "월_배당금": m_div})
-        c_inv_val *= (1 + inv_gr)
+    # 📌 가장 늦게 은퇴하는 사람의 연도를 '최종 은퇴 연도'로 계산
+    final_ret_yr = max(1995 + h_ret_age, 1994 + w_ret_age)
+    st.header(f"🚩 최종 은퇴 연도: {final_ret_yr}년")
+    
+    if final_ret_yr > 2095:
+        st.warning("⚠️ 설정된 은퇴 연도가 시뮬레이션 종료 시점(2095년)을 초과합니다.")
+    else:
+        ret_row = df_res[df_res["연도"] == final_ret_yr].iloc[0]
+        c_inv_val = ret_row["금융자산_억"]
         
-    df_div = pd.DataFrame(div_data)
-    fig_div = go.Figure()
-    fig_div.add_trace(go.Scatter(x=df_div["연도"], y=df_div["월_배당금"], fill='tozeroy', name="월 배당(만)", hovertemplate="<b>%{x}년</b><br>배당: %{y:,.0f}만<extra></extra>"))
-    fig_div.update_layout(title="은퇴 후 월 배당 성장 추이", height=500, template="plotly_white")
-    st.plotly_chart(fig_div, use_container_width=True)
-    st.metric("은퇴 시 금융자산", f"{ret_row['금융자산_억']:.2f}억")
+        # 은퇴 시점 자산 배분 계산
+        schd_amt = c_inv_val * (s_schd / 100)
+        jepq_amt = c_inv_val * (s_jepq / 100)
+        keep_amt = c_inv_val * ((100 - s_schd - s_jepq) / 100)
+        
+        # 첫 달 예상 배당금 (월 단위)
+        init_m_div = ((schd_amt * 0.035) + (jepq_amt * 0.095)) * 10000 / 12
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("총 금융자산", f"{c_inv_val:.2f}억")
+        c2.metric("첫 달 배당금", f"{init_m_div:,.0f}만")
+        c3.metric(f"SCHD ({s_schd}%)", f"{schd_amt:.2f}억")
+        c4.metric(f"JEPQ ({s_jepq}%)", f"{jepq_amt:.2f}억")
+        st.caption(f"💡 배당 포트폴리오 외 기존 투자 유지 자산(재투자용): {keep_amt:.2f}억")
+        st.markdown("---")
+        
+        div_data = []
+        sim_inv_val = c_inv_val
+        for y in range(final_ret_yr, 2096):
+            s_p = sim_inv_val * (s_schd/100)
+            j_p = sim_inv_val * (s_jepq/100)
+            m_div = ((s_p * 0.035 * (1.05**(y-final_ret_yr))) + (j_p * 0.095)) * 10000 / 12
+            div_data.append({"연도": y, "월_배당금": m_div})
+            sim_inv_val *= (1 + inv_gr) # 자산 원금 성장 가정
+            
+        df_div = pd.DataFrame(div_data)
+        fig_div = go.Figure()
+        fig_div.add_trace(go.Scatter(x=df_div["연도"], y=df_div["월_배당금"], fill='tozeroy', name="월 배당(만)", marker_color="#8b5cf6", hovertemplate="<b>%{x}년</b><br>배당: %{y:,.0f}만<extra></extra>"))
+        fig_div.update_layout(title="은퇴 후 월 배당 성장 추이", height=450, template="plotly_white")
+        st.plotly_chart(fig_div, use_container_width=True)
 
 with d_tab:
     st.subheader("📋 전체 상세 데이터")
-    
-    # 표시용 포맷팅 (숫자를 세 자리 콤마 스트링으로 변환)
     d_disp = df_res.copy()
     for col in d_disp.columns:
         if col not in ["연도", "이벤트"]:
