@@ -45,64 +45,10 @@ st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v16
 st.markdown("---")
 
 # --- 2. 데이터 유지 (세션 스테이트) ---
-if 're_trades' not in st.session_state: st.session_state.re_trades = []
-if 'events' not in st.session_state: st.session_state.events = []
-if 'kids' not in st.session_state:
-    st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}]
-
-# --- 3. 사이드바: 설정 레버 ---
-st.sidebar.title("🛠️ 재무 전략 설정")
-
-# (1) 시작 연도
-with st.sidebar.expander("📅 시나리오 시작 시점", expanded=True):
-start_yr = st.number_input("시작 연도", value=2026, min_value=2024, key="sys_start_yr")import pandas as pd
-import plotly.graph_objects as go
-
-# 1. 페이지 설정 및 프리미엄 디자인 UI/UX
-st.set_page_config(page_title="우리 가족 자산 마스터 v16.0", layout="wide")
-
-# CSS: 연한 하늘색 사이드바(검정 글씨) 및 고가독성 레이아웃 유지
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
-    
-    html, body, [class*="css"] { 
-        font-family: 'Noto Sans KR', sans-serif; 
-        font-size: 20px !important; 
-    }
-    
-    /* 왼쪽 사이드바: 연한 하늘색 바탕 + 검정 글씨 */
-    section[data-testid="stSidebar"] {
-        background-color: #e0f2fe !important;
-        border-right: 1px solid #bae6fd;
-    }
-    section[data-testid="stSidebar"] .stMarkdown p, 
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stHeader,
-    section[data-testid="stSidebar"] .stSelectbox label {
-        color: #000000 !important;
-        font-weight: 700 !important;
-    }
-
-    div[data-testid="stMetric"] {
-        background-color: #ffffff; padding: 25px !important; border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 6px solid #0ea5e9;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 22px !important; font-weight: 700; padding: 12px 30px;
-    }
-    .stButton>button {
-        width: 100%; border-radius: 12px; font-weight: 700; background-color: #0ea5e9; color: white; height: 3.5rem;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v16.0")
-st.markdown("---")
-
-# --- 2. 데이터 유지 (세션 스테이트) ---
-if 're_trades' not in st.session_state: st.session_state.re_trades = []
-if 'events' not in st.session_state: st.session_state.events = []
+if 're_trades' not in st.session_state: 
+    st.session_state.re_trades = []
+if 'events' not in st.session_state: 
+    st.session_state.events = []
 if 'kids' not in st.session_state:
     st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}]
 
@@ -154,6 +100,7 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
     re_gr_rate = st.number_input("부동산 상승률(%)", value=4.0, key="re_gr_in") / 100
     if st.button("➕ 갈아타기 추가"):
         st.session_state.re_trades.append({"year": start_yr+10, "new_price": 300000, "use_inv": 0, "use_debt": 0, "use_cash": 0})
+    
     for i, tr in enumerate(st.session_state.re_trades):
         st.markdown(f"**📍 계획 #{i+1}**")
         tr['year'] = st.number_input(f"매수 연도 {i}", start_yr, 2090, tr['year'], key=f"tr_y_{i}")
@@ -165,11 +112,15 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
         tr['use_inv'] = c1.number_input(f"금융 활용{i}", value=tr['use_inv'], key=f"tr_inv_{i}")
         tr['use_debt'] = c2.number_input(f"대출 추가{i}", value=tr['use_debt'], key=f"tr_debt_{i}")
         tr['use_cash'] = c3.number_input(f"예금 활용{i}", value=tr['use_cash'], key=f"tr_cash_{i}")
-        if st.button(f"🗑️ 계획 #{i+1} 삭제", key=f"re_del_{i}"): st.session_state.re_trades.pop(i); st.rerun()
+        if st.button(f"🗑️ 계획 #{i+1} 삭제", key=f"re_del_{i}"): 
+            st.session_state.re_trades.pop(i)
+            st.rerun()
 
 # (7) 자녀 및 특별 이벤트
 with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
-    if st.button("➕ 자녀 추가"): st.session_state.kids.append({"name": f"자녀{len(st.session_state.kids)+1}", "birth": start_yr+1, "costs": [100, 150, 200, 250, 300]})
+    if st.button("➕ 자녀 추가"): 
+        st.session_state.kids.append({"name": f"자녀{len(st.session_state.kids)+1}", "birth": start_yr+1, "costs": [100, 150, 200, 250, 300]})
+    
     for i, kid in enumerate(st.session_state.kids):
         st.write(f"👶 **{kid['name']}**")
         kid['birth'] = st.number_input(f"출생년 {i}", 2024, 2050, kid['birth'], key=f"kb_{i}")
@@ -179,8 +130,11 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
         kid['costs'][2] = c1.number_input(f"중등 {i}", value=kid['costs'][2], key=f"kc2_{i}")
         kid['costs'][3] = c2.number_input(f"고등 {i}", value=kid['costs'][3], key=f"kc3_{i}")
         kid['costs'][4] = c1.number_input(f"대학 {i}", value=kid['costs'][4], key=f"kc4_{i}")
+    
     st.markdown("---")
-    if st.button("➕ 이벤트 추가"): st.session_state.events.append({"name": "이벤트", "year": start_yr+3, "cost": 6000})
+    if st.button("➕ 이벤트 추가"): 
+        st.session_state.events.append({"name": "이벤트", "year": start_yr+3, "cost": 6000})
+    
     for i, ev in enumerate(st.session_state.events):
         ev['name'] = st.text_input(f"명칭 {i}", ev['name'], key=f"ev_n_{i}")
         ev['year'] = st.number_input(f"년도 {i}", start_yr, 2095, ev['year'], key=f"ev_y_{i}")
@@ -193,17 +147,17 @@ with st.sidebar.expander("👵 은퇴 배당 자산 배분", expanded=False):
     s_jepq = st.slider("JEPQ (고배당) %", 0, 100, 25, key="ret_jepq")
     st.info(f"기존 금융자산 유지: {100 - s_schd - s_jepq}%")
 
-# --- 4. 시뮬레이션 엔진 (오류 전면 수정) ---
+# --- 4. 시뮬레이션 엔진 ---
 def run_simulation():
     res = []
     c_re = re_init_val
-    c_re_base = re_init_val  # 양도세 계산용 매수 단가
+    c_re_base = re_init_val
     c_inv = inv_init
-    c_cash = 1000  # 초기 기본 예금
+    c_cash = 1000  # 초기 예금 세팅
     c_debt = debt_init
     c_h_sal, c_w_sal = h_sal, w_sal
     
-    rem_debt_term = debt_term  # 남은 대출 상환 기간 추적
+    rem_debt_term = debt_term
 
     for year in range(start_yr, 2096):
         h_age, w_age = year - 1995, year - 1994
@@ -220,18 +174,18 @@ def run_simulation():
         # 2. 갈아타기 및 대출 변동
         for tr in st.session_state.re_trades:
             if year == tr['year']:
-                t_gain = max(0, c_re - c_re_base) * 0.20  # 기존 집 양도세
-                t_acq = tr['new_price'] * 0.033  # 새 집 취득세
+                t_gain = max(0, c_re - c_re_base) * 0.20
+                t_acq = tr['new_price'] * 0.033
                 
                 c_inv -= tr['use_inv']
                 c_debt += tr['use_debt']
                 c_cash -= tr['use_cash']
                 
                 c_re = tr['new_price']
-                c_re_base = tr['new_price']  # 다음 매도를 위해 기준가 갱신
+                c_re_base = tr['new_price']
                 
                 if tr['use_debt'] > 0:
-                    rem_debt_term = debt_term  # 대출 발생 시 상환기간 리셋
+                    rem_debt_term = debt_term
                 ev_list.append("🏠갈아타기")
 
         # 3. 세금 및 양육비
@@ -249,7 +203,7 @@ def run_simulation():
             elif 20<=ka<=23: k_total += kid['costs'][4]*12
             if year == kid['birth']: ev_list.append(f"👶{kid['name']} 탄생")
 
-        # 4. 부채 상환 (동적 기간 반영)
+        # 4. 부채 상환
         interest_a = c_debt * debt_r
         principal_a, repay_a = 0, 0
         
@@ -258,14 +212,14 @@ def run_simulation():
                 pmt = (c_debt * debt_r * (1+debt_r)**rem_debt_term) / ((1+debt_r)**rem_debt_term - 1) if debt_r > 0 else (c_debt / rem_debt_term)
                 principal_a = pmt - interest_a
                 repay_a = pmt
-            else:  # 원금균등
+            else:
                 principal_a = c_debt / rem_debt_term
                 repay_a = principal_a + interest_a
             rem_debt_term -= 1
         elif c_debt > 0:
-            repay_a = interest_a  # 상환기간 종료 후 잔액 남았을 시 이자만 상환 가정
+            repay_a = interest_a
         
-        # 5. 지출 및 자산배분 (마이너스 흐름 방어 로직 추가)
+        # 5. 지출 및 자산배분
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         ev_cost = sum(ev['cost'] for ev in st.session_state.events if ev['year'] == year)
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
@@ -275,13 +229,12 @@ def run_simulation():
             c_inv += net_flow_y * (inv_ratio / 100)
             c_cash += net_flow_y * (1 - inv_ratio/100)
         else:
-            # 적자 발생 시: 투자자산 -> 현금 -> 마이너스 대출 순으로 방어
             c_inv += net_flow_y 
             if c_inv < 0:
                 c_cash += c_inv
                 c_inv = 0
                 if c_cash < 0:
-                    c_debt -= c_cash  # 대출 증가
+                    c_debt -= c_cash
                     c_cash = 0
             
         c_re *= (1 + re_gr_rate)
@@ -327,11 +280,14 @@ with m_tab:
         f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<extra></extra>"))
         f.update_layout(title=dict(text=title, font=dict(size=22)), height=340, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white")
         return f
+    
     c1, c2 = st.columns(2)
     c1.plotly_chart(draw_mini(sub, "부동산_억", "🏠 부동산(억)", "#f97316"), use_container_width=True)
     c2.plotly_chart(draw_mini(sub, "금융자산_억", "📈 금융투자(억)", "#8b5cf6"), use_container_width=True)
+    
     c3, c4 = st.columns(2)
     c3.plotly_chart(draw_mini(sub, "예금_억", "💰 예금(억)", "#0ea5e9"), use_container_width=True)
+    
     f_exp = go.Figure(go.Bar(x=sub["연도"], y=sub["월_지출_만"], marker_color="#f43f5e", hovertemplate="<b>%{x}년</b><br>금액: %{y:,.0f}만<extra></extra>"))
     f_exp.update_layout(title=dict(text="💸 월 지출(만)", font=dict(size=22)), height=340, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white")
     c4.plotly_chart(f_exp, use_container_width=True)
@@ -349,9 +305,12 @@ with s_tab:
     div_data = []
     c_inv_val = ret_row["금융자산_억"]
     for y in range(f_ret_yr, 2096):
-        schd_p = c_inv_val * (s_schd/100); jepq_p = c_inv_val * (s_jepq/100)
+        schd_p = c_inv_val * (s_schd/100)
+        jepq_p = c_inv_val * (s_jepq/100)
         m_div = ((schd_p * 0.035 * (1.05**(y-f_ret_yr))) + (jepq_p * 0.095)) * 10000 / 12
-        div_data.append({"연도": y, "월_배당금": m_div}); c_inv_val *= (1 + inv_gr)
+        div_data.append({"연도": y, "월_배당금": m_div})
+        c_inv_val *= (1 + inv_gr)
+        
     df_div = pd.DataFrame(div_data)
     fig_div = go.Figure()
     fig_div.add_trace(go.Scatter(x=df_div["연도"], y=df_div["월_배당금"], fill='tozeroy', name="월 배당(만)", hovertemplate="<b>%{x}년</b><br>배당: %{y:,.0f}만<extra></extra>"))
