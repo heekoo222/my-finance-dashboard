@@ -84,7 +84,7 @@ with st.sidebar.expander("📈 금융 투자 자산 설정", expanded=False):
     inv_gr = st.number_input("기대 수익률(%)", value=7.0, key="inv_gr_in") / 100
     inv_ratio = st.slider("💰 흑자 시 투자 비중(%)", 0, 100, 90, key="inv_rat_in")
 
-# (5) 대출 관리 (오더: 갈아타기 대출 동적 생성)
+# (5) 대출 관리
 with st.sidebar.expander("💳 대출 및 상환 방식", expanded=False):
     st.markdown("**기존 대출 설정**")
     debt_init = st.number_input("현재 대출 잔액(만)", value=60000, key="debt_ini_in")
@@ -92,7 +92,6 @@ with st.sidebar.expander("💳 대출 및 상환 방식", expanded=False):
     debt_term = st.number_input("상환 기간(년)", value=30, key="debt_t_in")
     debt_type = st.selectbox("상환 방식 선택", ["원리금균등", "원금균등"], key="debt_tp_in")
     
-    # 부동산 갈아타기가 있을 경우 대출 탭에 조건 설정창 자동 생성
     if st.session_state.re_trades:
         st.markdown("---")
         st.markdown("**🔄 갈아타기 신규 대출 조건**")
@@ -182,7 +181,6 @@ def run_simulation():
     c_debt = debt_init
     c_h_sal, c_w_sal = h_sal, w_sal
     
-    # 동적 대출 조건 변수
     curr_debt_r = debt_r
     curr_debt_type = debt_type
     rem_debt_term = debt_term
@@ -199,42 +197,48 @@ def run_simulation():
         if w_age >= 65: pension += (w_p_amt * 12)
         total_income_y = inc_h + inc_w + pension
         
-        # 2. 갈아타기 (대출 완전 갱신 및 현실적 자금 흐름 반영)
+        # 2. 갈아타기 (물리적 현금 입출금 기반 정산)
         for tr in st.session_state.re_trades:
             if year == tr['year']:
                 t_gain = max(0, c_re - c_re_base) * 0.20
                 t_acq = tr['new_price'] * 0.033
                 
-                # 매수 필요 자금 (순수 집값 차액)
-                est_sale_actual = c_re * 0.95
-                cash_needed = tr['new_price'] - est_sale_actual
+                # 기존 집 매각 대금 예금으로 입금
+                c_cash += (c_re * 0.95)
+                # 기존 대출 전액 상환 (예금에서 출금)
+                c_cash -= c_debt
                 
-                # 조달 자금 반영
-                new_debt = tr.get('new_debt_amt', c_debt) 
-                debt_cash_flow = new_debt - c_debt  # 대출 증가분은 플러스 현금
-                
+                # 사용자가 지정한 금융자산 매도액 예금으로 편입
                 c_inv -= tr['use_inv']
-                c_cash -= tr['use_cash']
+                c_cash += tr['use_inv']
                 
-                # 매수 후 남거나 모자란 자금은 예금(c_cash)에 반영
-                c_cash += (tr['use_inv'] + tr['use_cash'] + debt_cash_flow - cash_needed)
+                # 신규 대출 총액 예금으로 입금
+                new_debt = tr.get('new_debt_amt', 60000)
+                c_cash += new_debt
                 
-                # 자산 상태 업데이트
+                # 신규 주택 매수 및 취득세 납부 (예금에서 출금)
+                c_cash -= (tr['new_price'] + t_acq)
+                
+                # 자산 및 대출 정보 갱신
                 c_debt = new_debt
                 c_re = tr['new_price']
                 c_re_base = tr['new_price']
                 
-                # 신규 대출 조건으로 엎어치기
                 curr_debt_r = tr.get('new_debt_r', curr_debt_r)
                 curr_debt_type = tr.get('new_debt_type', curr_debt_type)
                 rem_debt_term = tr.get('new_debt_term', debt_term)
                 
                 ev_list.append("🏠갈아타기")
 
-        # 3. 세금 및 양육비
+        # 3. 세금 (보수적 로직 적용) 및 양육비
+        # 부동산 보유세 (재산세 + 종부세 보수적 추정)
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
-        total_tax_y = (total_income_y * 0.15) + t_hold + t_comp + t_gain + t_acq
+        
+        # 금융소득세 (배당세 등: 금융자산의 3%를 수익금으로 보고 15.4% 과세)
+        t_fin_tax = (c_inv * 0.03) * 0.154 if c_inv > 0 else 0
+        
+        total_tax_y = (total_income_y * 0.15) + t_hold + t_comp + t_gain + t_acq + t_fin_tax
         
         k_total = 0
         for kid in st.session_state.kids:
@@ -246,7 +250,7 @@ def run_simulation():
             elif 20<=ka<=23: k_total += kid['costs'][4]*12
             if year == kid['birth']: ev_list.append(f"👶{kid['name']} 탄생")
 
-        # 4. 부채 상환 (동적 이율, 기간 적용)
+        # 4. 부채 상환
         interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
         
@@ -268,17 +272,20 @@ def run_simulation():
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
         
+        # 흐름 정산
         if net_flow_y >= 0:
             c_inv += net_flow_y * (inv_ratio / 100)
             c_cash += net_flow_y * (1 - inv_ratio/100)
         else:
-            c_inv += net_flow_y 
+            c_cash += net_flow_y  # 적자 시 일단 예금에서 뺌
+            
+        # 🚨 잔고 기반 폭포수(Waterfall) 방어 로직 (버그 수정됨)
+        if c_cash < 0:
+            c_inv += c_cash  # 예금 마이너스분을 투자자산 매도로 메꿈
+            c_cash = 0
             if c_inv < 0:
-                c_cash += c_inv
+                c_debt -= c_inv  # 투자자산도 바닥나면 마이너스 통장(대출) 증가
                 c_inv = 0
-                if c_cash < 0:
-                    c_debt -= c_cash
-                    c_cash = 0
             
         c_re *= (1 + re_gr_rate)
         c_inv *= (1 + inv_gr)
@@ -289,8 +296,9 @@ def run_simulation():
             "총자산_억": round((c_re + c_inv + c_cash)/10000, 2),
             "부동산_억": round(c_re/10000, 2), "금융자산_억": round(c_inv/10000, 2), 
             "예금_억": round(c_cash/10000, 2), "대출_억": round(c_debt/10000, 2),
-            "월_순현금_만": round(net_flow_y/12, 0), "월_지출_만": round(total_exp_y/12, 0),
-            "월_세금_만": round(total_tax_y/12, 0), "양도세_만": round(t_gain, 0), "취득세_만": round(t_acq, 0),
+            "총수입_만": round(total_income_y, 0), "월_순현금_만": round(net_flow_y/12, 0), "월_지출_만": round(total_exp_y/12, 0),
+            "보유세_만": round(t_hold + t_comp, 0), "금융소득세_만": round(t_fin_tax, 0),
+            "양도세_만": round(t_gain, 0), "취득세_만": round(t_acq, 0),
             "이벤트": ", ".join(ev_list) if ev_list else "없음"
         })
         c_h_sal *= (1 + h_inc)
@@ -300,14 +308,31 @@ def run_simulation():
 
 df_res = run_simulation()
 
-# --- 5. 대시보드 출력 ---
+# --- 5. 대시보드 출력 UI 프리미엄화 ---
+# Plotly 테이블 렌더링 함수 (가시성 및 디자인 대폭 상향)
+def draw_premium_table(df):
+    fig = go.Figure(data=[go.Table(
+        header=dict(values=list(df.columns),
+                    fill_color='#0ea5e9',
+                    font=dict(color='white', size=16, family="Noto Sans KR"),
+                    align='center',
+                    height=45),
+        cells=dict(values=[df[col] for col in df.columns],
+                   fill_color='#f8fafc',
+                   font=dict(color='#0f172a', size=15, family="Noto Sans KR"),
+                   align='center',
+                   height=35))
+    ])
+    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=650)
+    return fig
+
 m_tab, t_tab, s_tab, d_tab = st.tabs(["📊 자산 성장 로드맵", "⚖️ 상세 세무 분석", "👵 은퇴 & 배당 시뮬레이션", "📋 데이터 상세"])
 
 with m_tab:
     period = st.radio("🔍 조회 기간", ["5년", "10년", "20년", "30년", "전체"], horizontal=True, index=4, key="p_sel")
     sub = df_res.head({"5년":5, "10년":10, "20년":20, "30년":30, "전체":len(df_res)}[period])
 
-    # 메인 차트: 호버 오더 (연도 -> 총자산 -> 순자산 -> 부채)
+    # 메인 차트
     fig = go.Figure()
     fig.add_trace(go.Bar(x=sub["연도"], y=sub["순자산_억"], name="순자산", marker_color='#10b981',
                          customdata=sub[["총자산_억", "대출_억"]],
@@ -336,10 +361,15 @@ with m_tab:
     c4.plotly_chart(f_exp, use_container_width=True)
 
 with t_tab:
-    st.header("⚖️ 상세 세무 분석")
-    t_disp = sub[["연도", "월_세금_만", "양도세_만", "취득세_만"]].copy()
-    t_disp.columns = ["연도", "월세금(만)", "양도세", "취득세"]
-    st.dataframe(t_disp.style.format({c: "{:,.0f}" for c in t_disp.columns if "연도" not in c}), use_container_width=True, height=600)
+    st.header("⚖️ 상세 세무 분석 (단위: 만원)")
+    t_disp = df_res[["연도", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만"]].copy()
+    
+    # 세 자리수 콤마 텍스트 변환
+    for col in ["보유세_만", "금융소득세_만", "양도세_만", "취득세_만"]:
+        t_disp[col] = t_disp[col].apply(lambda x: f"{x:,.0f}")
+        
+    t_disp.columns = ["연도", "🏠 보유세(재산+종부)", "📈 금융소득세(배당등)", "💸 양도세", "📝 취득세"]
+    st.plotly_chart(draw_premium_table(t_disp), use_container_width=True)
 
 with s_tab:
     st.header("👵 은퇴 배당 시뮬레이션")
@@ -363,4 +393,12 @@ with s_tab:
 
 with d_tab:
     st.subheader("📋 전체 상세 데이터")
-    st.dataframe(df_res.style.format({c: "{:.2f}" if "_억" in c else "{:,.0f}" for c in df_res.columns if "연도" not in c and "이벤트" not in c}), use_container_width=True)
+    
+    # 표시용 포맷팅 (숫자를 세 자리 콤마 스트링으로 변환)
+    d_disp = df_res.copy()
+    for col in d_disp.columns:
+        if col not in ["연도", "이벤트"]:
+            if "_억" in col: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.2f}")
+            else: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.0f}")
+            
+    st.plotly_chart(draw_premium_table(d_disp), use_container_width=True)
