@@ -3,13 +3,16 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # 1. 페이지 설정 및 프리미엄 디자인
-st.set_page_config(page_title="Family Wealth Master v7.0", layout="wide")
+st.set_page_config(page_title="Family Wealth Master v7.1", layout="wide")
 
 # 가독성을 위한 CSS (폰트 확대 및 디자인 강화)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif; font-size: 20px !important; }
+    html, body, [class*="css"] { 
+        font-family: 'Noto Sans KR', sans-serif; 
+        font-size: 20px !important; 
+    }
     .main { background-color: #f8fafc; }
     div[data-testid="stMetric"] { background-color: #ffffff; padding: 25px !important; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
     div[data-testid="stExpander"] { background-color: #ffffff; border-radius: 12px; margin-bottom: 15px; border: 1px solid #e2e8f0; }
@@ -63,7 +66,7 @@ with st.sidebar.expander("💳 대출 상세 설정", expanded=False):
     debt_term = st.number_input("상환 기간(년)", value=30, key="sys_debt_term")
     debt_type = st.selectbox("상환 방식", ["원리금균등", "원금균등"], key="sys_debt_type")
 
-# (4) [복구] 부동산 갈아타기 (매각/매수 Gap 조달 로직)
+# (4) [복구] 부동산 갈아타기 (Gap 조달 로직)
 with st.sidebar.expander("🔄 부동산 갈아타기 계획", expanded=False):
     re_init_val = st.number_input("현재 부동산 가액(만)", value=140000, key="sys_re_val")
     re_gr_rate = st.number_input("부동산 상승률(%)", value=4.0, key="sys_re_gr") / 100
@@ -73,17 +76,17 @@ with st.sidebar.expander("🔄 부동산 갈아타기 계획", expanded=False):
     
     for i, tr in enumerate(st.session_state.re_trades):
         st.markdown(f"**🏠 갈아타기 #{i+1}**")
-        tr['year'] = st.number_input(f"매수년도", start_yr, 2090, tr['year'], key=f"tr_yr_{i}")
-        # 매각가 추정
+        tr['year'] = st.number_input(f"매수년도 {i}", start_yr, 2090, tr['year'], key=f"tr_yr_{i}")
+        # 매각가 추정 (세후 95% 가정)
         est_sale = re_init_val * ((1 + re_gr_rate)**(max(0, tr['year'] - start_yr))) * 0.95
         st.write(f"👉 예상 매각 대금(세후): **{est_sale/10000:.2f} 억원**")
-        tr['new_price'] = st.number_input(f"새 아파트 매수가(만)", 0, 1000000, tr['new_price'], key=f_tr_pr_{i}")
+        tr['new_price'] = st.number_input(f"새 아파트 매수가(만) {i}", 0, 1000000, tr['new_price'], key=f"tr_pr_{i}")
         gap = tr['new_price'] - est_sale
         st.warning(f"⚠️ 추가 조달 필요액: **{gap/10000:.2f} 억원**")
-        col1, col2, col3 = st.columns(3)
-        tr['use_inv'] = col1.number_input("금융(만)", value=tr['use_inv'], key=f"tr_inv_{i}")
-        tr['use_debt'] = col2.number_input("대출(만)", value=tr['use_debt'], key=f"tr_debt_{i}")
-        tr['use_cash'] = col3.number_input("예금(만)", value=tr['use_cash'], key=f"tr_cash_{i}")
+        c1, c2, c3 = st.columns(3)
+        tr['use_inv'] = c1.number_input(f"금융(만) {i}", value=tr['use_inv'], key=f"tr_inv_{i}")
+        tr['use_debt'] = c2.number_input(f"대출(만) {i}", value=tr['use_debt'], key=f"tr_debt_{i}")
+        tr['use_cash'] = c3.number_input(f"예금(만) {i}", value=tr['use_cash'], key=f"tr_cash_{i}")
         if st.button(f"🗑️ #{i+1} 삭제", key=f"btn_del_re_{i}"):
             st.session_state.re_trades.pop(i); st.rerun()
 
@@ -97,13 +100,13 @@ with st.sidebar.expander("🍼 자녀별 양육비 상세", expanded=False):
     
     for i, kid in enumerate(st.session_state.kids):
         st.write(f"👶 **{kid['name']} 설정**")
-        kid['birth'] = st.number_input(f"출생년도", 2024, 2050, kid['birth'], key=f"kb_{i}")
+        kid['birth'] = st.number_input(f"출생년도 {i}", 2024, 2050, kid['birth'], key=f"kb_{i}")
         c1, c2 = st.columns(2)
-        kid['costs'][0] = c1.number_input("영유아(0-7)", value=kid['costs'][0], key=f"kc0_{i}")
-        kid['costs'][1] = c2.number_input("초등(8-13)", value=kid['costs'][1], key=f"kc1_{i}")
-        kid['costs'][2] = c1.number_input("중등(14-16)", value=kid['costs'][2], key=f"kc2_{i}")
-        kid['costs'][3] = c2.number_input("고등(17-19)", value=kid['costs'][3], key=f"kc3_{i}")
-        kid['costs'][4] = c1.number_input("대학(20-23)", value=kid['costs'][4], key=f"kc4_{i}")
+        kid['costs'][0] = c1.number_input(f"영유아(0-7) {i}", value=kid['costs'][0], key=f"kc0_{i}")
+        kid['costs'][1] = c2.number_input(f"초등(8-13) {i}", value=kid['costs'][1], key=f"kc1_{i}")
+        kid['costs'][2] = c1.number_input(f"중등(14-16) {i}", value=kid['costs'][2], key=f"kc2_{i}")
+        kid['costs'][3] = c2.number_input(f"고등(17-19) {i}", value=kid['costs'][3], key=f"kc3_{i}")
+        kid['costs'][4] = c1.number_input(f"대학(20-23) {i}", value=kid['costs'][4], key=f"kc4_{i}")
         if st.button(f"🗑️ {kid['name']} 삭제", key=f"btn_del_kid_{i}"):
             st.session_state.kids.pop(i); st.rerun()
 
@@ -112,14 +115,14 @@ with st.sidebar.expander("🚀 특별 이벤트 설정", expanded=False):
     if st.button("➕ 이벤트 추가", key="btn_add_ev"):
         st.session_state.events.append({"name": "새 이벤트", "year": start_yr+2, "cost": 5000})
     for i, ev in enumerate(st.session_state.events):
-        ev['name'] = st.text_input("이벤트명", ev['name'], key=f"ev_nm_{i}")
-        c_y, c_c = st.columns(2)
-        ev['year'] = c_y.number_input("연도", start_yr, 2095, ev['year'], key=f"ev_yr_{i}")
-        ev['cost'] = c_c.number_input("비용(만)", 0, 1000000, ev['cost'], key=f"ev_cs_{i}")
+        ev['name'] = st.text_input(f"이벤트명 {i}", ev['name'], key=f"ev_nm_{i}")
+        cy, cc = st.columns(2)
+        ev['year'] = cy.number_input(f"연도 {i}", start_yr, 2095, ev['year'], key=f"ev_yr_{i}")
+        ev['cost'] = cc.number_input(f"비용(만) {i}", 0, 1000000, ev['cost'], key=f"ev_cs_{i}")
         if st.button(f"🗑️ 이벤트 #{i+1} 삭제", key=f"btn_del_ev_{i}"):
             st.session_state.events.pop(i); st.rerun()
 
-# --- 4. 시뮬레이션 엔진 (모든 복구 로직 반영) ---
+# --- 4. 시뮬레이션 엔진 (모든 로직 통합) ---
 def run_simulation():
     res = []
     c_re, c_inv, c_cash, c_debt = re_init_val, inv_init, 1000, debt_init
@@ -137,13 +140,22 @@ def run_simulation():
         if w_age >= 65: pension += (w_p_amt * 12)
         total_income_gross = inc_h + inc_w + pension
         
-        # 2. 부동산 거래 (복구된 Gap 로직)
+        # 2. 세목별 세금 초기화
+        t_inc, t_hold, t_comp, t_fin, t_acq, t_gain = 0, 0, 0, 0, 0, 0
+        t_inc = total_income_gross * 0.15 
+        t_hold = (c_re * 0.6) * 0.0015
+        t_comp = max(0, (c_re - 120000) * 0.005)
+        t_fin = max(0, (c_inv * inv_gr - 2000) * 0.154)
+        
+        # 3. 부동산 갈아타기 (양도세 vs 취득세 구분)
         for tr in st.session_state.re_trades:
             if year == tr['year']:
+                t_gain = max(0, c_re - re_init_val) * 0.20 # 양도세
+                t_acq = tr['new_price'] * 0.033           # 취득세
                 c_inv -= tr['use_inv']; c_debt += tr['use_debt']; c_cash -= tr['use_cash']; c_re = tr['new_price']
                 ev_list.append(f"🏠{tr['new_price']//10000}억 이동")
 
-        # 3. 양육비 계산 (복구된 시기별 로직)
+        # 4. 양육비 계산 (단계별)
         k_cost_annual = 0
         for kid in st.session_state.kids:
             ka = year - kid['birth']
@@ -154,12 +166,7 @@ def run_simulation():
             elif 17<=ka<=19: k_cost_annual += kid['costs'][3]*12
             elif 20<=ka<=23: k_cost_annual += kid['costs'][4]*12
 
-        # 4. 세금 및 대출 상환
-        t_inc = total_income_gross * 0.15 
-        t_hold = (c_re * 0.6) * 0.0015
-        t_comp = max(0, (c_re - 120000) * 0.005)
-        t_fin = max(0, (c_inv * inv_gr - 2000) * 0.154)
-        
+        # 5. 대출 상환
         interest_a = c_debt * debt_r
         if c_debt > 0 and (year < start_yr + debt_term):
             if debt_type == "원리금균등":
@@ -170,13 +177,13 @@ def run_simulation():
         else:
             principal_a, repay_a = 0, 0
 
-        # 5. 최종 지출 및 배분
+        # 6. 최종 지출 및 자산 배분
         curr_living = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         ev_cost = sum(ev['cost'] for ev in st.session_state.events if ev['year'] == year)
         for ev in st.session_state.events:
             if year == ev['year']: ev_list.append(f"🚀{ev['name']}")
         
-        total_tax = t_inc + t_hold + t_comp + t_fin
+        total_tax = t_inc + t_hold + t_comp + t_fin + t_acq + t_gain
         total_exp = curr_living + k_cost_annual + total_tax + repay_a + ev_cost
         net_flow = total_income_gross - total_exp
         
@@ -192,7 +199,8 @@ def run_simulation():
             "net_asset": (c_re + c_inv + c_cash - c_debt)/10000,
             "re": c_re/10000, "inv": c_inv/10000, "debt": c_debt/10000,
             "m_spend": total_exp/12, "m_net": net_flow/12,
-            "t_total": total_tax, "t_inc": t_inc, "t_hold": t_hold + t_comp, "t_fin": t_fin,
+            "t_total": total_tax, "t_inc": t_inc, "t_hold": t_hold + t_comp, "t_fin": t_fin, 
+            "t_acq": t_acq, "t_gain": t_gain,
             "event": ", ".join(ev_list) if ev_list else "없음"
         })
         c_h_sal *= (1 + h_inc); c_w_sal *= (1 + w_inc)
@@ -204,7 +212,7 @@ df = run_simulation()
 m_tab, t_tab, d_tab = st.tabs(["📊 자산 로드맵", "⚖️ 상세 세금 분석", "📋 데이터 시트"])
 
 with m_tab:
-    p_choice = st.radio("시뮬레이션 조회 기간", ["10년", "20년", "30년", "전체"], horizontal=True, index=3, key="p_choice")
+    p_choice = st.radio("시뮬레이션 조회 기간", ["10년", "20년", "30년", "전체"], horizontal=True, index=3, key="main_p")
     sub = df.head({"10년":10, "20년":20, "30년":30, "전체":len(df)}[p_choice])
 
     fig = go.Figure()
@@ -230,9 +238,9 @@ with m_tab:
 
 with t_tab:
     st.header("⚖️ 연도별 상세 세금 리포트")
-    tax_df = sub[["year", "age", "t_inc", "t_hold", "t_fin", "t_total"]].copy()
-    tax_df.columns = ["연도", "나이", "소득세", "보유세", "금융세", "합계"]
-    num_cols = ["소득세", "보유세", "금융세", "합계"]
+    tax_df = sub[["year", "age", "t_inc", "t_hold", "t_fin", "t_acq", "t_gain", "t_total"]].copy()
+    tax_df.columns = ["연도", "나이", "소득세", "보유세", "금융세", "취득세", "양도세", "합계"]
+    num_cols = ["소득세", "보유세", "금융세", "취득세", "양도세", "합계"]
     st.dataframe(tax_df.style.format({c: "{:,.0f}" for c in num_cols}), use_container_width=True)
 
 with d_tab:
