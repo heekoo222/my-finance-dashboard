@@ -41,6 +41,10 @@ st.markdown("""
     .stButton>button {
         width: 100%; border-radius: 12px; font-weight: 700; background-color: #0ea5e9; color: white; height: 3.5rem;
     }
+    /* Streamlit 네이티브 데이터프레임 헤더 스타일링 */
+    [data-testid="stDataFrame"] {
+        font-family: 'Noto Sans KR', sans-serif;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -194,16 +198,16 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
 with st.sidebar.expander("👵 은퇴 시점 리밸런싱 & 배당", expanded=False):
     st.markdown("**1️⃣ 주택 연금화 (다운사이징)**")
     ret_re_down_ratio = st.slider("최종 은퇴 시 부동산 매각 비율(%)", 0, 100, 30, step=10, key="ret_down_r")
-    st.caption("매각 대금은 양도세 정산 후 전액 금융자산으로 편입")
+    st.caption("매각 대금은 양도세 정산 후 전액 금융자산으로 즉시 편입됩니다.")
     st.markdown("---")
     st.markdown("**2️⃣ 은퇴 시점 부채 상환**")
     ret_debt_payoff_ratio = st.slider("은퇴 시 부채 상환 비율(%)", 0, 100, 100, step=10, key="ret_debt_r")
-    st.caption("상환 자금은 총 금융자산 내에서 우선 차감")
+    st.caption("상환 자금은 총 금융자산 내에서 우선 차감됩니다.")
     st.markdown("---")
     st.markdown("**3️⃣ 은퇴 후 금융자산 배분**")
     s_schd = st.slider("SCHD (배당성장) %", 0, 100, 25, key="ret_schd")
     s_jepq = st.slider("JEPQ (고배당) %", 0, 100, 25, key="ret_jepq")
-    st.info(f"기존 투자유지(재투자): {100 - s_schd - s_jepq}%")
+    st.info(f"기존 금융자산 유지(재투자): {100 - s_schd - s_jepq}%")
 
 # --- 4. 시뮬레이션 엔진 ---
 def run_simulation():
@@ -228,12 +232,12 @@ def run_simulation():
         ev_list, pension = [], 0
         t_acq_total, t_gain_total = 0, 0
         
+        # 1. 소득 및 배당 계산
         inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
         inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
         if h_age >= 65: pension += (h_p_amt * 12)
         if w_age >= 65: pension += (w_p_amt * 12)
         
-        # 은퇴 전/후 배당률 로직
         if year >= final_ret_year:
             schd_yoc = 0.035 * (1.05 ** (year - final_ret_year))
             jepq_yield = 0.095 
@@ -247,12 +251,12 @@ def run_simulation():
         
         if year == h_ret_year:
             c_inv += h_sev_pay
-            ev_list.append(f"👨‍🦳남편 은퇴(퇴직금 {h_sev_pay//10000}억)")
+            ev_list.append(f"👨‍🦳남편 은퇴(퇴직금 {h_sev_pay//10000}억 편입)")
         if year == w_ret_year:
             c_inv += w_sev_pay
-            ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억)")
+            ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억 편입)")
         
-        # 부동산 갈아타기 정산
+        # 2. 부동산 갈아타기
         for tr in st.session_state.re_trades:
             if year == tr['year']:
                 gain = max(0, c_re - c_re_base) * 0.20
@@ -301,7 +305,7 @@ def run_simulation():
                 rem_debt_term = tr.get('new_debt_term', debt_term)
                 ev_list.append("🏠부동산 갈아타기")
 
-        # 은퇴 시점 리밸런싱
+        # 3. 은퇴 시점 리밸런싱
         if year == final_ret_year:
             if ret_re_down_ratio > 0:
                 down_ratio = ret_re_down_ratio / 100
@@ -326,7 +330,7 @@ def run_simulation():
                     c_debt -= actual_payoff
                     ev_list.append(f"💳부채상환({ret_debt_payoff_ratio}%)")
 
-        # 세금 및 양육비 계산
+        # 4. 세금 및 양육비 계산
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
         t_fin_tax = div_income_y * 0.154 if div_income_y > 0 else 0
@@ -338,22 +342,26 @@ def run_simulation():
         for kid in st.session_state.kids:
             ka = year - kid['birth']
             sch_stage = ""
-            if ka == 7: sch_stage = f"👶{kid['name']} 초교 입학"
-            elif ka == 13: sch_stage = f"🧒{kid['name']} 중교 입학"
-            elif ka == 16: sch_stage = f"🧑{kid['name']} 고교 입학"
-            elif ka == 19: sch_stage = f"👨‍🎓{kid['name']} 대학 입학"
-            elif ka == 23: sch_stage = f"💼{kid['name']} 독립"
-            
-            if 0<=ka<=7: k_total += kid['costs'][0]*12
-            elif 8<=ka<=13: k_total += kid['costs'][1]*12
-            elif 14<=ka<=16: k_total += kid['costs'][2]*12
-            elif 17<=ka<=19: k_total += kid['costs'][3]*12
-            elif 20<=ka<=23: k_total += kid['costs'][4]*12
+            if 0<=ka<=7: 
+                k_total += kid['costs'][0]*12
+                if ka == 7: sch_stage = f"👶{kid['name']} 초교 입학"
+            elif 8<=ka<=13: 
+                k_total += kid['costs'][1]*12
+                if ka == 13: sch_stage = f"🧒{kid['name']} 중교 입학"
+            elif 14<=ka<=16: 
+                k_total += kid['costs'][2]*12
+                if ka == 16: sch_stage = f"🧑{kid['name']} 고교 입학"
+            elif 17<=ka<=19: 
+                k_total += kid['costs'][3]*12
+                if ka == 19: sch_stage = f"👨‍🎓{kid['name']} 대학교 입학"
+            elif 20<=ka<=23: 
+                k_total += kid['costs'][4]*12
+                if ka == 23: sch_stage = f"💼{kid['name']} 대학 졸업/독립"
             
             if sch_stage: ev_list.append(sch_stage)
             if year == kid['birth']: ev_list.append(f"🍼{kid['name']} 탄생")
 
-        # 부채 상환 계산
+        # 5. 부채 상환 계산
         interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
         if c_debt > 0 and rem_debt_term > 0:
@@ -373,7 +381,7 @@ def run_simulation():
             spec_ev_names = [ev['name'] for ev in st.session_state.events if ev['year'] == year]
             ev_list.append(f"🎁이벤트: {','.join(spec_ev_names)}")
         
-        # 6. 지출 및 자산배분 (FCF 정산 - 문법 오류 완전 해결)
+        # 6. 지출 및 자산배분 (FCF 정산 - 금융자산 우선 매각 로직 적용)
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
@@ -382,20 +390,21 @@ def run_simulation():
             c_inv += net_flow_y * (inv_ratio / 100)
             c_cash += net_flow_y * (1 - inv_ratio/100)
         else:
-            c_cash += net_flow_y
-            if c_cash < 0:
-                c_inv += c_cash
-                c_cash = 0
-                if c_inv < 0:
-                    c_debt -= c_inv
-                    c_inv = 0
+            # 🚨 잉여현금(FCF)이 마이너스면 가장 먼저 금융자산을 팔아서 생활비를 충당합니다.
+            c_inv += net_flow_y 
+            if c_inv < 0:
+                c_cash += c_inv  # 금융자산이 바닥나면 예금을 헐어서 씁니다.
+                c_inv = 0
+                if c_cash < 0:
+                    c_debt -= c_cash # 예금도 바닥나면 마이너스 통장(대출)이 늘어납니다.
+                    c_cash = 0
             
         c_re *= (1 + re_gr_rate)
         effective_growth = inv_gr - blended_yield
         c_inv *= (1 + effective_growth) 
         c_debt = max(0, c_debt - principal_a)
         
-        event_str_tooltip = "<br>".join(ev_list) if ev_list else "특별한 이벤트 없음"
+        event_str_tooltip = "\n".join(ev_list) if ev_list else "특별한 이벤트 없음"
         
         res.append({
             "연도": year, "순자산_억": round((c_re + c_inv + c_cash - c_debt)/10000, 2),
@@ -432,13 +441,11 @@ df_res = run_simulation()
 
 # --- 5. 대시보드 출력 UI ---
 
-# 🌟 신규 기능: 대시보드 최상단 요약칸 (Summary Section)
 final_ret_yr = max(1995 + h_ret_age, 1994 + w_ret_age)
 if final_ret_yr <= end_yr:
     ret_row = df_res[df_res["연도"] == final_ret_yr].iloc[0]
     
     st.markdown(f"## 🏠 우리 가족 자산 계획 요약")
-    
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("🚩 남편 은퇴 연도", f"{1995 + h_ret_age}년", f"({h_ret_age}세)")
     col2.metric("🚩 아내 은퇴 연도", f"{1994 + w_ret_age}년", f"({w_ret_age}세)")
@@ -446,28 +453,20 @@ if final_ret_yr <= end_yr:
     col4.metric(f"은퇴({final_ret_yr}년) 시 순자산", f"{ret_row['순자산_억']:.2f}억")
     st.markdown("---")
 
-def draw_premium_table(df):
-    fig = go.Figure(data=[go.Table(
-        header=dict(values=list(df.columns), fill_color='#0ea5e9', font=dict(color='white', size=16, family="Noto Sans KR"), align='center', height=45),
-        cells=dict(values=[df[col] for col in df.columns], fill_color='#f8fafc', font=dict(color='#0f172a', size=15, family="Noto Sans KR"), align='center', height=35))
-    ])
-    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=650)
-    return fig
-
-# 🌟 차트 하단 범례 겹침 방지 최적화 함수
+# 차트 하단 범례 겹침 방지 최적화 함수
 def draw_stacked_bar(data, items, title):
     fig = go.Figure()
     for col_name, label_name, color in items:
+        # Hover 텍스트에서 <br> 대신 \n을 사용한 데이터를 올바르게 렌더링하도록 처리
         fig.add_trace(go.Bar(
             x=data["연도"], y=data[col_name], name=label_name, marker_color=color, customdata=data["이벤트"],
             hovertemplate=f"<b>%{{x}}년</b><br>{label_name}: %{{y:,.0f}}만<br>--------------------<br>%{{customdata}}<extra></extra>"
         ))
-    # height를 420으로 키우고 legend y 값을 -0.2로 내려서 x축 글씨와 겹침 방지
     fig.update_layout(
         barmode='stack', title=dict(text=title, font=dict(size=20)),
-        height=420, margin=dict(l=10, r=10, t=50, b=10), template="plotly_white",
+        height=450, margin=dict(l=10, r=10, t=50, b=20), template="plotly_white",
         hoverlabel=dict(bgcolor="white", font_size=16, font_family="Noto Sans KR", align="left"),
-        legend=dict(orientation="h", yanchor="top", y=-0.2, xanchor="center", x=0.5, font=dict(size=13))
+        legend=dict(orientation="h", yanchor="top", y=-0.15, xanchor="center", x=0.5, font=dict(size=13))
     )
     return fig
 
@@ -480,7 +479,7 @@ def draw_fcf_bar(data, col_name, title):
     ))
     fig.update_layout(
         title=dict(text=title, font=dict(size=20)),
-        height=420, margin=dict(l=10, r=10, t=50, b=10), template="plotly_white",
+        height=450, margin=dict(l=10, r=10, t=50, b=20), template="plotly_white",
         hoverlabel=dict(bgcolor="white", font_size=16, font_family="Noto Sans KR", align="left")
     )
     return fig
@@ -493,7 +492,6 @@ with m_tab:
     display_len = {"5년": min(5, len_data), "10년": min(10, len_data), "20년": min(20, len_data), "30년": min(30, len_data), "전체": len_data}[period]
     sub = df_res.head(display_len)
 
-    # 1. 메인 자산 차트 (제목 추가)
     fig = go.Figure()
     fig.add_trace(go.Bar(x=sub["연도"], y=sub["순자산_억"], name="순자산", marker_color='#10b981', customdata=sub[["총자산_억", "대출_억", "이벤트"]],
                          hovertemplate="<b>%{x}년</b><br>총자산: %{customdata[0]:.2f}억<br>순자산: %{y:.2f}억<br>부채: %{customdata[1]:.2f}억<br>--------------------<br>🚨 <b>이슈:</b><br>%{customdata[2]}<extra></extra>"))
@@ -503,7 +501,6 @@ with m_tab:
                       hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"))
     st.plotly_chart(fig, use_container_width=True)
 
-    # 2. 서브 자산 차트 3종
     st.markdown("#### 🏢 주요 자산 지표 (단위: 억)")
     def draw_mini_asset(data, col, title, color):
         f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
@@ -518,7 +515,6 @@ with m_tab:
     c3.plotly_chart(draw_mini_asset(sub, "예금_억", "💰 예금(억)", "#0ea5e9"), use_container_width=True)
     st.markdown("---")
     
-    # 3. 현금흐름 시각화 (은퇴 후 배당 연동 & 범례 위치 최적화)
     in_items_m = [("월_남편소득_만", "남편소득", "#3b82f6"), ("월_아내소득_만", "아내소득", "#ec4899"), ("월_배당_만", "배당(수입)", "#f59e0b"), ("월_연금_만", "공적연금", "#10b981")]
     out_items_m = [("월_생활비_만", "생활비", "#0ea5e9"), ("월_양육비_만", "양육비", "#10b981"), ("월_원리금_만", "대출상환", "#f59e0b"),
                    ("월_보유세_만", "보유세", "#ef4444"), ("월_소득등세금_만", "세금(배당포함)", "#8b5cf6"), ("월_이벤트_만", "이벤트", "#ec4899")]
@@ -528,6 +524,8 @@ with m_tab:
                    ("연_보유세_만", "보유세", "#ef4444"), ("연_소득등세금_만", "세금(배당포함)", "#8b5cf6"), ("연_이벤트_만", "이벤트", "#ec4899")]
 
     st.markdown("#### 🌊 월간 현금흐름 분석 (수입 vs 지출 vs FCF)")
+    st.info("💡 **FCF(잉여현금흐름)란?** 총 수입에서 모든 지출(생활비, 대출원리금, 세금 등)을 빼고 남은 '순수 여윳돈'입니다. 적자(-)가 발생할 경우 **보유 중인 금융자산(주식 등)을 1순위로 매각하여 자동으로 부족한 생활비를 충당**하도록 설계되었습니다.", icon="💵")
+    
     cm1, cm2, cm3 = st.columns(3)
     cm1.plotly_chart(draw_stacked_bar(sub, in_items_m, "📥 월 유입 현금(만)"), use_container_width=True)
     cm2.plotly_chart(draw_stacked_bar(sub, out_items_m, "📤 월 지출 상세(만)"), use_container_width=True)
@@ -541,17 +539,21 @@ with m_tab:
     cy3.plotly_chart(draw_fcf_bar(sub, "연_FCF_만", "💵 연 잉여현금(FCF)"), use_container_width=True)
 
 with t_tab:
-    # 🌟 신규 사용자용 도우미 추가
     st.info("💡 **세무 시뮬레이션 가정 사항**\n* **취득세:** 갈아타기 주택 매수가의 3.3% 일괄 적용\n* **양도세:** 기존 주택 시세 차익의 20% 일괄 적용\n* **금융소득세:** 매년 발생하는 배당금의 15.4%를 세금 지출로 자동 차감 (연간/월간 지출 차트에 '세금'으로 합산됨)", icon="ℹ️")
     
     st.header("⚖️ 상세 세무 분석 테이블 (단위: 만원)")
+    
+    # 가시성을 극대화한 네이티브 표(Dataframe) 출력 로직
     t_disp = df_res[["연도", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만", "이벤트"]].copy()
+    
+    # 천단위 콤마 포맷 적용
     for col in ["보유세_만", "금융소득세_만", "양도세_만", "취득세_만"]:
         t_disp[col] = t_disp[col].apply(lambda x: f"{x:,.0f}")
-    
-    t_disp["이벤트"] = t_disp["이벤트"].apply(lambda x: str(x).replace("<br>", " / "))
+        
     t_disp.columns = ["연도", "🏠 보유세(재산+종부)", "📈 금융소득세(배당등)", "💸 양도세", "📝 취득세", "🚩 관련 이벤트"]
-    st.plotly_chart(draw_premium_table(t_disp), use_container_width=True)
+    
+    # 최신 네이티브 데이터프레임으로 출력 (정렬, 크기조절 등 최상급 가시성 제공)
+    st.dataframe(t_disp, use_container_width=True, hide_index=True, height=600)
 
 with s_tab:
     if final_ret_yr > end_yr:
@@ -559,7 +561,6 @@ with s_tab:
     else:
         st.header(f"🚩 최종 은퇴 연도: {final_ret_yr}년 (주택 다운사이징 및 부채상환 완료 후)")
         
-        # 🌟 신규 사용자용 도우미 (배당 및 할인율 가정)
         st.info(f"💡 **배당 시뮬레이션 및 현재가치 가정 사항**\n* **현재가치(PV):** 매년 3%의 물가상승(할인율)을 가정하여, {final_ret_yr}년의 자산을 현재({start_yr}년) 기준의 구매력으로 환산합니다.\n* **은퇴 전 배당:** 금융자산에서 연 평균 1%의 배당수익이 발생한다고 가정합니다.\n* **은퇴 후 배당:** JEPQ는 연 9.5% 고정, SCHD는 초기 3.5% (이후 연 5%씩 배당금 성장, Yield on Cost 적용)로 배당금을 지급합니다.", icon="ℹ️")
         
         ret_row = df_res[df_res["연도"] == final_ret_yr].iloc[0]
@@ -615,7 +616,6 @@ with s_tab:
 with d_tab:
     st.subheader("📋 전체 상세 데이터")
     
-    # 누락된 변수 없이 완벽하게 배열
     cols_to_show = ["연도", "순자산_억", "총자산_억", "부동산_억", "금융자산_억", "예금_억", "대출_억", 
                     "연_총수입_만", "연_총지출_만", "연_FCF_만", "월_총수입_만", "월_총지출_만", "월_FCF_만", 
                     "월_생활비_만", "월_양육비_만", "월_원리금_만", "월_보유세_만", "월_소득등세금_만", "월_이벤트_만",
@@ -627,8 +627,8 @@ with d_tab:
             if "_억" in col: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.2f}")
             else: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.0f}")
             
-    d_disp["이벤트"] = d_disp["이벤트"].apply(lambda x: str(x).replace("<br>", " / "))
-    st.plotly_chart(draw_premium_table(d_disp), use_container_width=True)
+    # 네이티브 데이터프레임으로 출력하여 헤더 날아감 방지 및 가시성 극대화
+    st.dataframe(d_disp, use_container_width=True, hide_index=True, height=650)
 
 # --- 6. 사용자 데이터 자동 저장 로직 ---
 static_keys = [
