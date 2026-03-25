@@ -252,14 +252,23 @@ def run_simulation():
         ev_list, pension = [], 0
         t_acq_total, t_gain_total = 0, 0
         
-        # 1. 소득 및 배당(나스닥 1% 가정) 계산
+        # 1. 소득 및 배당 로직 (은퇴 전후 배당률 변경 반영)
         inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
         inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
         if h_age >= 65: pension += (h_p_amt * 12)
         if w_age >= 65: pension += (w_p_amt * 12)
         
-        # 매년 투자자산에서 연 1% 배당이 현금흐름으로 창출된다고 가정
-        div_income_y = c_inv * 0.01
+        # 은퇴 전/후 혼합 배당률 도출
+        if year >= final_ret_year:
+            # SCHD: 초기 3.5% + 매년 5% 배당성장률 가정 (Yield on Cost)
+            schd_yield = 0.035 * (1.05 ** (year - final_ret_year))
+            jepq_yield = 0.095 # 고배당 고정
+            gen_yield = 0.01   # 기존 유지자산
+            blended_yield = (s_schd/100)*schd_yield + (s_jepq/100)*jepq_yield + (1 - s_schd/100 - s_jepq/100)*gen_yield
+        else:
+            blended_yield = 0.01 # 은퇴 전에는 나스닥 평균 배당수익률 1% 가정
+            
+        div_income_y = c_inv * blended_yield
         total_income_y = inc_h + inc_w + pension + div_income_y
         
         if year == h_ret_year:
@@ -349,7 +358,8 @@ def run_simulation():
         # 4. 세금 및 양육비 계산
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
-        t_fin_tax = (c_inv * 0.03) * 0.154 if c_inv > 0 else 0
+        # 배당소득세 현실화 (받은 배당금에 대해 15.4% 부과)
+        t_fin_tax = div_income_y * 0.154 if div_income_y > 0 else 0
         
         tax_income_etc = (total_income_y * 0.15)
         total_tax_y = tax_income_etc + t_hold + t_comp + t_fin_tax
@@ -398,10 +408,10 @@ def run_simulation():
             spec_ev_names = [ev['name'] for ev in st.session_state.events if ev['year'] == year]
             ev_list.append(f"🎁이벤트: {','.join(spec_ev_names)}")
         
-        # 6. 지출 및 자산배분 (FCF 정산)
+        # 6. 지출 및 자산배분 (FCF)
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
-        net_flow_y = total_income_y - total_exp_y  # FCF (Free Cash Flow)
+        net_flow_y = total_income_y - total_exp_y
         
         if net_flow_y >= 0:
             c_inv += net_flow_y * (inv_ratio / 100)
@@ -417,19 +427,21 @@ def run_simulation():
                 c_inv = 0
             
         c_re *= (1 + re_gr_rate)
-        # 배당으로 이미 현금흐름(div_income_y)을 빼주었으므로, 이중 반영 방지를 위해 원금 성장률에서 1%를 차감
-        c_inv *= (1 + inv_gr - 0.01) 
+        # 🚨 이중 반영 방지: 투자 수익률(inv_gr)에서 수입으로 빼준 배당률(blended_yield)만큼 차감하여 원금 성장
+        effective_growth = inv_gr - blended_yield
+        c_inv *= (1 + effective_growth) 
         c_debt = max(0, c_debt - principal_a)
         
         event_str_tooltip = "<br>".join(ev_list) if ev_list else "특별한 이벤트 없음"
         
+        # 데이터 캡슐 생성 (모든 차트 및 표에 필요한 변수 완벽 대응)
         res.append({
             "연도": year, "순자산_억": round((c_re + c_inv + c_cash - c_debt)/10000, 2),
             "총자산_억": round((c_re + c_inv + c_cash)/10000, 2),
             "부동산_억": round(c_re/10000, 2), "금융자산_억": round(c_inv/10000, 2), 
             "예금_억": round(c_cash/10000, 2), "대출_억": round(c_debt/10000, 2),
             
-            # 연간 수입/지출 세부 내역 저장
+            # 연간 데이터
             "연_남편소득_만": round(inc_h, 0), "연_아내소득_만": round(inc_w, 0),
             "연_배당_만": round(div_income_y, 0), "연_연금_만": round(pension, 0),
             "연_생활비_만": round(curr_living_y, 0), "연_양육비_만": round(k_total, 0),
@@ -437,7 +449,7 @@ def run_simulation():
             "연_소득등세금_만": round(tax_income_etc + t_fin_tax, 0), "연_이벤트_만": round(ev_cost, 0),
             "연_총수입_만": round(total_income_y, 0), "연_총지출_만": round(total_exp_y, 0), "연_FCF_만": round(net_flow_y, 0),
             
-            # 월간 수입/지출 세부 내역 저장 (연간 값을 12로 나눔)
+            # 월간 데이터
             "월_남편소득_만": round(inc_h / 12, 0), "월_아내소득_만": round(inc_w / 12, 0),
             "월_배당_만": round(div_income_y / 12, 0), "월_연금_만": round(pension / 12, 0),
             "월_생활비_만": round(curr_living_y / 12, 0), "월_양육비_만": round(k_total / 12, 0),
@@ -445,7 +457,8 @@ def run_simulation():
             "월_소득등세금_만": round((tax_income_etc + t_fin_tax) / 12, 0), "월_이벤트_만": round(ev_cost / 12, 0),
             "월_총수입_만": round(total_income_y / 12, 0), "월_총지출_만": round(total_exp_y / 12, 0), "월_FCF_만": round(net_flow_y / 12, 0),
             
-            # 세무 분석 탭용 기존 변수 유지
+            # 기존 호환성 및 상세 테이블용
+            "총수입_만": round(total_income_y, 0), "월_순현금_만": round(net_flow_y / 12, 0), "월_지출_만": round(total_exp_y / 12, 0),
             "보유세_만": round(t_hold + t_comp, 0), "금융소득세_만": round(t_fin_tax, 0),
             "양도세_만": round(t_gain_total, 0), "취득세_만": round(t_acq_total, 0),
             
@@ -543,11 +556,11 @@ with m_tab:
     st.markdown("---")
     
     # 3. 현금흐름 시각화 아이템 세팅
-    in_items_m = [("월_남편소득_만", "남편소득", "#3b82f6"), ("월_아내소득_만", "아내소득", "#ec4899"), ("월_배당_만", "배당(연1%)", "#f59e0b"), ("월_연금_만", "연금", "#10b981")]
+    in_items_m = [("월_남편소득_만", "남편소득", "#3b82f6"), ("월_아내소득_만", "아내소득", "#ec4899"), ("월_배당_만", "배당소득", "#f59e0b"), ("월_연금_만", "공적연금", "#10b981")]
     out_items_m = [("월_생활비_만", "생활비", "#0ea5e9"), ("월_양육비_만", "양육비", "#10b981"), ("월_원리금_만", "대출상환", "#f59e0b"),
                    ("월_보유세_만", "보유세", "#ef4444"), ("월_소득등세금_만", "세금", "#8b5cf6"), ("월_이벤트_만", "이벤트", "#ec4899")]
     
-    in_items_y = [("연_남편소득_만", "남편소득", "#3b82f6"), ("연_아내소득_만", "아내소득", "#ec4899"), ("연_배당_만", "배당(연1%)", "#f59e0b"), ("연_연금_만", "연금", "#10b981")]
+    in_items_y = [("연_남편소득_만", "남편소득", "#3b82f6"), ("연_아내소득_만", "아내소득", "#ec4899"), ("연_배당_만", "배당소득", "#f59e0b"), ("연_연금_만", "공적연금", "#10b981")]
     out_items_y = [("연_생활비_만", "생활비", "#0ea5e9"), ("연_양육비_만", "양육비", "#10b981"), ("연_원리금_만", "대출상환", "#f59e0b"),
                    ("연_보유세_만", "보유세", "#ef4444"), ("연_소득등세금_만", "세금", "#8b5cf6"), ("연_이벤트_만", "이벤트", "#ec4899")]
 
