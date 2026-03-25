@@ -254,7 +254,7 @@ def run_simulation():
             c_inv += w_sev_pay
             ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억 편입)")
         
-        # 2. 부동산 갈아타기 (자금 조달 정밀화)
+        # 2. 부동산 갈아타기
         for tr in st.session_state.re_trades:
             if year == tr['year']:
                 gain = max(0, c_re - c_re_base) * 0.20
@@ -263,29 +263,25 @@ def run_simulation():
                 t_acq_total += acq
                 
                 net_sale = c_re - gain
-                need_amt = tr['new_price'] + acq + c_debt  # 필요 총자금 (신규주택+취득세+기존대출상환)
+                need_amt = tr['new_price'] + acq + c_debt
                 
                 req_new_debt = tr.get('new_debt_amt', 60000)
                 use_inv = tr.get('use_inv', 0)
                 use_cash = tr.get('use_cash', 0)
                 
-                # 사용자가 지정한 한도 내에서 실제 보유량까지만 인출
                 actual_use_inv = min(c_inv, use_inv)
                 actual_use_cash = min(c_cash, use_cash)
                 
                 c_inv -= actual_use_inv
                 c_cash -= actual_use_cash
                 
-                # 조달 가능한 총 자금: 순매각대금 + 목표 신규대출 + 매도한 금융/예금
                 total_funding = net_sale + req_new_debt + actual_use_inv + actual_use_cash
-                
                 surplus = total_funding - need_amt
                 
                 if surplus >= 0:
-                    c_cash += surplus  # 자금이 남으면 예금 통장으로
+                    c_cash += surplus
                     c_debt = req_new_debt
                 else:
-                    # 자금이 모자라면 투자자산 자동 매각을 막고, 모자란 만큼 강제로 대출을 끌어옴!
                     c_debt = req_new_debt + abs(surplus)
                 
                 c_re = tr['new_price']
@@ -313,12 +309,13 @@ def run_simulation():
             c_re_base -= base_cost
             ev_list.append(f"📉주택축소({ret_re_down_ratio}%)")
 
-        # 4. 세금 및 양육비
+        # 4. 세금 및 양육비 계산
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
         t_fin_tax = (c_inv * 0.03) * 0.154 if c_inv > 0 else 0
         
-        total_tax_y = (total_income_y * 0.15) + t_hold + t_comp + t_fin_tax
+        tax_income_etc = (total_income_y * 0.15)
+        total_tax_y = tax_income_etc + t_hold + t_comp + t_fin_tax
         
         k_total = 0
         for kid in st.session_state.kids:
@@ -343,7 +340,7 @@ def run_simulation():
             if sch_stage: ev_list.append(sch_stage)
             if year == kid['birth']: ev_list.append(f"🍼{kid['name']} 탄생")
 
-        # 5. 부채 상환
+        # 5. 부채 상환 계산
         interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
         
@@ -364,7 +361,7 @@ def run_simulation():
             spec_ev_names = [ev['name'] for ev in st.session_state.events if ev['year'] == year]
             ev_list.append(f"🎁이벤트: {','.join(spec_ev_names)}")
         
-        # 6. 지출 및 자산배분 (일반 생활비 결산)
+        # 6. 지출 및 자산배분
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
@@ -388,13 +385,22 @@ def run_simulation():
         
         event_str_tooltip = "<br>".join(ev_list) if ev_list else "특별한 이벤트 없음"
         
+        # 지출 세부 항목 계산 (월 단위 만원)
         res.append({
             "연도": year, "순자산_억": round((c_re + c_inv + c_cash - c_debt)/10000, 2),
             "총자산_억": round((c_re + c_inv + c_cash)/10000, 2),
             "부동산_억": round(c_re/10000, 2), "금융자산_억": round(c_inv/10000, 2), 
             "예금_억": round(c_cash/10000, 2), "대출_억": round(c_debt/10000, 2),
             "총수입_만": round(total_income_y, 0), "월_순현금_만": round(net_flow_y/12, 0), "월_지출_만": round(total_exp_y/12, 0),
-            "보유세_만": round(t_hold + t_comp, 0), "금융소득세_만": round(t_fin_tax, 0),
+            
+            # 지출 누적 막대 그래프를 위한 세부 항목 추가
+            "월_생활비_만": round(curr_living_y / 12, 0),
+            "월_양육비_만": round(k_total / 12, 0),
+            "월_원리금_만": round(repay_a / 12, 0),
+            "월_보유세_만": round((t_hold + t_comp) / 12, 0),
+            "월_소득등세금_만": round((tax_income_etc + t_fin_tax) / 12, 0),
+            "월_이벤트_만": round(ev_cost / 12, 0),
+            
             "양도세_만": round(t_gain_total, 0), "취득세_만": round(t_acq_total, 0),
             "이벤트": event_str_tooltip
         })
@@ -445,14 +451,10 @@ with m_tab:
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("#### 🔍 세부 지표")
-    def draw_mini(data, col, title, color, is_money_man=False):
-        if is_money_man:
-            f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
-                                 hovertemplate="<b>%{x}년</b><br>금액: %{y:,.0f}만<br>--------------------<br>%{customdata}<extra></extra>"))
-        else:
-            f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
-                                 hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<br>--------------------<br>%{customdata}<extra></extra>"))
-        f.update_layout(title=dict(text=title, font=dict(size=22)), height=340, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white",
+    def draw_mini(data, col, title, color):
+        f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
+                             hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<br>--------------------<br>%{customdata}<extra></extra>"))
+        f.update_layout(title=dict(text=title, font=dict(size=22)), height=360, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white",
                         hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"))
         return f
     
@@ -462,7 +464,32 @@ with m_tab:
     
     c3, c4 = st.columns(2)
     c3.plotly_chart(draw_mini(sub, "예금_억", "💰 예금(억)", "#0ea5e9"), use_container_width=True)
-    c4.plotly_chart(draw_mini(sub, "월_지출_만", "💸 월 지출(만)", "#f43f5e", is_money_man=True), use_container_width=True)
+    
+    # 🌟 월 지출 세부 항목 누적 막대 그래프 생성
+    f_exp = go.Figure()
+    exp_items = [
+        ("월_생활비_만", "생활비", "#0ea5e9"),
+        ("월_양육비_만", "양육비", "#10b981"),
+        ("월_원리금_만", "대출상환", "#f59e0b"),
+        ("월_보유세_만", "보유세", "#ef4444"),
+        ("월_소득등세금_만", "소득/기타세", "#8b5cf6"),
+        ("월_이벤트_만", "이벤트", "#ec4899")
+    ]
+    for col_name, label_name, color in exp_items:
+        f_exp.add_trace(go.Bar(
+            x=sub["연도"], y=sub[col_name], name=label_name, marker_color=color,
+            customdata=sub["이벤트"],
+            hovertemplate=f"<b>%{{x}}년</b><br>{label_name}: %{{y:,.0f}}만<br>--------------------<br>%{{customdata}}<extra></extra>"
+        ))
+        
+    f_exp.update_layout(
+        barmode='stack',
+        title=dict(text="💸 월 지출 상세(만)", font=dict(size=22)),
+        height=360, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white",
+        hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=14))
+    )
+    c4.plotly_chart(f_exp, use_container_width=True)
 
 with t_tab:
     st.header("⚖️ 상세 세무 분석 (단위: 만원)")
@@ -483,11 +510,9 @@ with s_tab:
     else:
         ret_row = df_res[df_res["연도"] == final_ret_yr].iloc[0]
         
-        # 미래가치 (FV)
         total_asset_fv = ret_row["총자산_억"]
         c_inv_fv = ret_row["금융자산_억"]
         
-        # 현재가치 (PV) 계산 (3% 할인율 적용)
         discount_rate = 0.03
         num_years = final_ret_yr - start_yr
         discount_factor = (1 + discount_rate) ** max(0, num_years)
@@ -536,7 +561,13 @@ with s_tab:
 
 with d_tab:
     st.subheader("📋 전체 상세 데이터")
-    d_disp = df_res.copy()
+    
+    # 데이터프레임 복사 후 보여줄 컬럼 순서 재조정
+    cols_to_show = ["연도", "순자산_억", "총자산_억", "부동산_억", "금융자산_억", "예금_억", "대출_억", 
+                    "총수입_만", "월_순현금_만", "월_지출_만", "월_생활비_만", "월_양육비_만", "월_원리금_만", 
+                    "월_보유세_만", "월_소득등세금_만", "월_이벤트_만", "이벤트"]
+    d_disp = df_res[cols_to_show].copy()
+    
     for col in d_disp.columns:
         if col not in ["연도", "이벤트"]:
             if "_억" in col: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.2f}")
