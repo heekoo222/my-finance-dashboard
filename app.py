@@ -67,7 +67,7 @@ if 'kids' not in st.session_state:
 # --- 3. 사이드바: 설정 레버 ---
 st.sidebar.title("🛠️ 재무 전략 설정")
 
-# (1) 시나리오 기간 설정 (시작/종료 연도 동적 설정)
+# (1) 시나리오 기간 설정
 with st.sidebar.expander("📅 시나리오 기간 설정", expanded=True):
     c1, c2 = st.columns(2)
     start_yr = c1.number_input("시작 연도", value=2026, min_value=2024, key="sys_start_yr")
@@ -247,18 +247,20 @@ def run_simulation():
     w_ret_year = 1994 + w_ret_age
     final_ret_year = max(h_ret_year, w_ret_year)
 
-    # 설정된 종료 연도(end_yr)까지 동적으로 시뮬레이션 실행
     for year in range(start_yr, end_yr + 1):
         h_age, w_age = year - 1995, year - 1994
         ev_list, pension = [], 0
         t_acq_total, t_gain_total = 0, 0
         
-        # 1. 소득 및 퇴직금
+        # 1. 소득 및 배당(나스닥 1% 가정) 계산
         inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
         inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
         if h_age >= 65: pension += (h_p_amt * 12)
         if w_age >= 65: pension += (w_p_amt * 12)
-        total_income_y = inc_h + inc_w + pension
+        
+        # 매년 투자자산에서 연 1% 배당이 현금흐름으로 창출된다고 가정
+        div_income_y = c_inv * 0.01
+        total_income_y = inc_h + inc_w + pension + div_income_y
         
         if year == h_ret_year:
             c_inv += h_sev_pay
@@ -396,10 +398,10 @@ def run_simulation():
             spec_ev_names = [ev['name'] for ev in st.session_state.events if ev['year'] == year]
             ev_list.append(f"🎁이벤트: {','.join(spec_ev_names)}")
         
-        # 6. 지출 및 자산배분
+        # 6. 지출 및 자산배분 (FCF 정산)
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
-        net_flow_y = total_income_y - total_exp_y
+        net_flow_y = total_income_y - total_exp_y  # FCF (Free Cash Flow)
         
         if net_flow_y >= 0:
             c_inv += net_flow_y * (inv_ratio / 100)
@@ -415,7 +417,8 @@ def run_simulation():
                 c_inv = 0
             
         c_re *= (1 + re_gr_rate)
-        c_inv *= (1 + inv_gr)
+        # 배당으로 이미 현금흐름(div_income_y)을 빼주었으므로, 이중 반영 방지를 위해 원금 성장률에서 1%를 차감
+        c_inv *= (1 + inv_gr - 0.01) 
         c_debt = max(0, c_debt - principal_a)
         
         event_str_tooltip = "<br>".join(ev_list) if ev_list else "특별한 이벤트 없음"
@@ -425,19 +428,26 @@ def run_simulation():
             "총자산_억": round((c_re + c_inv + c_cash)/10000, 2),
             "부동산_억": round(c_re/10000, 2), "금융자산_억": round(c_inv/10000, 2), 
             "예금_억": round(c_cash/10000, 2), "대출_억": round(c_debt/10000, 2),
-            "총수입_만": round(total_income_y, 0), "월_순현금_만": round(net_flow_y/12, 0), "월_지출_만": round(total_exp_y/12, 0),
             
-            "월_생활비_만": round(curr_living_y / 12, 0),
-            "월_양육비_만": round(k_total / 12, 0),
-            "월_원리금_만": round(repay_a / 12, 0),
-            "월_보유세_만": round((t_hold + t_comp) / 12, 0),
-            "월_소득등세금_만": round((tax_income_etc + t_fin_tax) / 12, 0),
-            "월_이벤트_만": round(ev_cost / 12, 0),
+            # 연간 수입/지출 세부 내역 저장
+            "연_남편소득_만": round(inc_h, 0), "연_아내소득_만": round(inc_w, 0),
+            "연_배당_만": round(div_income_y, 0), "연_연금_만": round(pension, 0),
+            "연_생활비_만": round(curr_living_y, 0), "연_양육비_만": round(k_total, 0),
+            "연_원리금_만": round(repay_a, 0), "연_보유세_만": round(t_hold + t_comp, 0),
+            "연_소득등세금_만": round(tax_income_etc + t_fin_tax, 0), "연_이벤트_만": round(ev_cost, 0),
+            "연_총수입_만": round(total_income_y, 0), "연_총지출_만": round(total_exp_y, 0), "연_FCF_만": round(net_flow_y, 0),
             
-            "보유세_만": round(t_hold + t_comp, 0), 
-            "금융소득세_만": round(t_fin_tax, 0),
-            "양도세_만": round(t_gain_total, 0), 
-            "취득세_만": round(t_acq_total, 0),
+            # 월간 수입/지출 세부 내역 저장 (연간 값을 12로 나눔)
+            "월_남편소득_만": round(inc_h / 12, 0), "월_아내소득_만": round(inc_w / 12, 0),
+            "월_배당_만": round(div_income_y / 12, 0), "월_연금_만": round(pension / 12, 0),
+            "월_생활비_만": round(curr_living_y / 12, 0), "월_양육비_만": round(k_total / 12, 0),
+            "월_원리금_만": round(repay_a / 12, 0), "월_보유세_만": round((t_hold + t_comp) / 12, 0),
+            "월_소득등세금_만": round((tax_income_etc + t_fin_tax) / 12, 0), "월_이벤트_만": round(ev_cost / 12, 0),
+            "월_총수입_만": round(total_income_y / 12, 0), "월_총지출_만": round(total_exp_y / 12, 0), "월_FCF_만": round(net_flow_y / 12, 0),
+            
+            # 세무 분석 탭용 기존 변수 유지
+            "보유세_만": round(t_hold + t_comp, 0), "금융소득세_만": round(t_fin_tax, 0),
+            "양도세_만": round(t_gain_total, 0), "취득세_만": round(t_acq_total, 0),
             
             "이벤트": event_str_tooltip
         })
@@ -465,75 +475,96 @@ def draw_premium_table(df):
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=650)
     return fig
 
+# 공통 스택/바 차트 생성 함수
+def draw_stacked_bar(data, items, title):
+    fig = go.Figure()
+    for col_name, label_name, color in items:
+        fig.add_trace(go.Bar(
+            x=data["연도"], y=data[col_name], name=label_name, marker_color=color,
+            customdata=data["이벤트"],
+            hovertemplate=f"<b>%{{x}}년</b><br>{label_name}: %{{y:,.0f}}만<br>--------------------<br>%{{customdata}}<extra></extra>"
+        ))
+    fig.update_layout(
+        barmode='stack', title=dict(text=title, font=dict(size=20)),
+        height=360, margin=dict(l=10, r=10, t=50, b=10), template="plotly_white",
+        hoverlabel=dict(bgcolor="white", font_size=16, font_family="Noto Sans KR"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=13))
+    )
+    return fig
+
+def draw_fcf_bar(data, col_name, title):
+    fig = go.Figure()
+    colors = ['#10b981' if val >= 0 else '#ef4444' for val in data[col_name]]
+    fig.add_trace(go.Bar(
+        x=data["연도"], y=data[col_name], marker_color=colors,
+        customdata=data["이벤트"],
+        hovertemplate="<b>%{x}년</b><br>FCF: %{y:,.0f}만<br>--------------------<br>%{customdata}<extra></extra>"
+    ))
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=20)),
+        height=360, margin=dict(l=10, r=10, t=50, b=10), template="plotly_white",
+        hoverlabel=dict(bgcolor="white", font_size=16, font_family="Noto Sans KR")
+    )
+    return fig
+
 m_tab, t_tab, s_tab, d_tab = st.tabs(["📊 자산 성장 로드맵", "⚖️ 상세 세무 분석", "👵 은퇴 & 배당 시뮬레이션", "📋 데이터 상세"])
 
 with m_tab:
     period = st.radio("🔍 조회 기간", ["5년", "10년", "20년", "30년", "전체"], horizontal=True, index=4, key="p_sel")
-    
-    # 설정한 종료 연도에 맞게 데이터를 동적으로 자름
     len_data = len(df_res)
     display_len = {"5년": min(5, len_data), "10년": min(10, len_data), "20년": min(20, len_data), "30년": min(30, len_data), "전체": len_data}[period]
     sub = df_res.head(display_len)
 
+    # 1. 메인 자산 차트
     fig = go.Figure()
     fig.add_trace(go.Bar(x=sub["연도"], y=sub["순자산_억"], name="순자산", marker_color='#10b981',
                          customdata=sub[["총자산_억", "대출_억", "이벤트"]],
-                         hovertemplate="<b>%{x}년</b><br>" +
-                                       "총자산: %{customdata[0]:.2f}억<br>" +
-                                       "순자산: %{y:.2f}억<br>" +
-                                       "부채: %{customdata[1]:.2f}억<br>" +
-                                       "--------------------<br>" +
-                                       "🚨 <b>주요 이슈:</b><br>%{customdata[2]}<extra></extra>"))
+                         hovertemplate="<b>%{x}년</b><br>총자산: %{customdata[0]:.2f}억<br>순자산: %{y:.2f}억<br>부채: %{customdata[1]:.2f}억<br>--------------------<br>🚨 <b>이슈:</b><br>%{customdata[2]}<extra></extra>"))
     fig.add_trace(go.Bar(x=sub["연도"], y=sub["대출_억"], name="부채", marker_color='#ef4444',
                          customdata=sub["이벤트"],
                          hovertemplate="<b>%{x}년 부채: %{y:.2f}억</b><extra></extra>"))
-    fig.update_layout(barmode='stack', hovermode="x unified", height=600, template="plotly_white", font=dict(size=18),
-                      hoverlabel=dict(bgcolor="white", font_size=20, font_family="Noto Sans KR", align="left"))
+    fig.update_layout(barmode='stack', hovermode="x unified", height=500, template="plotly_white", font=dict(size=18),
+                      hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"))
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("#### 🔍 세부 지표")
-    def draw_mini(data, col, title, color, is_money_man=False):
-        if is_money_man:
-            f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
-                                 hovertemplate="<b>%{x}년</b><br>금액: %{y:,.0f}만<br>--------------------<br>%{customdata}<extra></extra>"))
-        else:
-            f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
-                                 hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<br>--------------------<br>%{customdata}<extra></extra>"))
-        f.update_layout(title=dict(text=title, font=dict(size=22)), height=360, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white",
-                        hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"))
+    # 2. 서브 자산 차트 3종
+    st.markdown("#### 🏢 주요 자산 지표 (단위: 억)")
+    def draw_mini_asset(data, col, title, color):
+        f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
+                             hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<br>--------------------<br>%{customdata}<extra></extra>"))
+        f.update_layout(title=dict(text=title, font=dict(size=20)), height=320, margin=dict(l=10, r=10, t=50, b=10), template="plotly_white",
+                        hoverlabel=dict(bgcolor="white", font_size=16, font_family="Noto Sans KR", align="left"))
         return f
     
-    c1, c2 = st.columns(2)
-    c1.plotly_chart(draw_mini(sub, "부동산_억", "🏠 부동산(억)", "#f97316"), use_container_width=True)
-    c2.plotly_chart(draw_mini(sub, "금융자산_억", "📈 금융투자(억)", "#8b5cf6"), use_container_width=True)
+    c1, c2, c3 = st.columns(3)
+    c1.plotly_chart(draw_mini_asset(sub, "부동산_억", "🏠 부동산(억)", "#f97316"), use_container_width=True)
+    c2.plotly_chart(draw_mini_asset(sub, "금융자산_억", "📈 금융투자(억)", "#8b5cf6"), use_container_width=True)
+    c3.plotly_chart(draw_mini_asset(sub, "예금_억", "💰 예금(억)", "#0ea5e9"), use_container_width=True)
+    st.markdown("---")
     
-    c3, c4 = st.columns(2)
-    c3.plotly_chart(draw_mini(sub, "예금_억", "💰 예금(억)", "#0ea5e9"), use_container_width=True)
+    # 3. 현금흐름 시각화 아이템 세팅
+    in_items_m = [("월_남편소득_만", "남편소득", "#3b82f6"), ("월_아내소득_만", "아내소득", "#ec4899"), ("월_배당_만", "배당(연1%)", "#f59e0b"), ("월_연금_만", "연금", "#10b981")]
+    out_items_m = [("월_생활비_만", "생활비", "#0ea5e9"), ("월_양육비_만", "양육비", "#10b981"), ("월_원리금_만", "대출상환", "#f59e0b"),
+                   ("월_보유세_만", "보유세", "#ef4444"), ("월_소득등세금_만", "세금", "#8b5cf6"), ("월_이벤트_만", "이벤트", "#ec4899")]
     
-    f_exp = go.Figure()
-    exp_items = [
-        ("월_생활비_만", "생활비", "#0ea5e9"),
-        ("월_양육비_만", "양육비", "#10b981"),
-        ("월_원리금_만", "대출상환", "#f59e0b"),
-        ("월_보유세_만", "보유세", "#ef4444"),
-        ("월_소득등세금_만", "소득/기타세", "#8b5cf6"),
-        ("월_이벤트_만", "이벤트", "#ec4899")
-    ]
-    for col_name, label_name, color in exp_items:
-        f_exp.add_trace(go.Bar(
-            x=sub["연도"], y=sub[col_name], name=label_name, marker_color=color,
-            customdata=sub["이벤트"],
-            hovertemplate=f"<b>%{{x}}년</b><br>{label_name}: %{{y:,.0f}}만<br>--------------------<br>%{{customdata}}<extra></extra>"
-        ))
-        
-    f_exp.update_layout(
-        barmode='stack',
-        title=dict(text="💸 월 지출 상세(만)", font=dict(size=22)),
-        height=360, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white",
-        hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5, font=dict(size=14))
-    )
-    c4.plotly_chart(f_exp, use_container_width=True)
+    in_items_y = [("연_남편소득_만", "남편소득", "#3b82f6"), ("연_아내소득_만", "아내소득", "#ec4899"), ("연_배당_만", "배당(연1%)", "#f59e0b"), ("연_연금_만", "연금", "#10b981")]
+    out_items_y = [("연_생활비_만", "생활비", "#0ea5e9"), ("연_양육비_만", "양육비", "#10b981"), ("연_원리금_만", "대출상환", "#f59e0b"),
+                   ("연_보유세_만", "보유세", "#ef4444"), ("연_소득등세금_만", "세금", "#8b5cf6"), ("연_이벤트_만", "이벤트", "#ec4899")]
+
+    # 월간 현금흐름 3종 차트
+    st.markdown("#### 🌊 월간 현금흐름 분석 (수입 vs 지출 vs FCF)")
+    cm1, cm2, cm3 = st.columns(3)
+    cm1.plotly_chart(draw_stacked_bar(sub, in_items_m, "📥 월 유입 현금(만)"), use_container_width=True)
+    cm2.plotly_chart(draw_stacked_bar(sub, out_items_m, "📤 월 지출 상세(만)"), use_container_width=True)
+    cm3.plotly_chart(draw_fcf_bar(sub, "월_FCF_만", "💵 월 잉여현금(FCF)"), use_container_width=True)
+    st.markdown("---")
+    
+    # 연간 현금흐름 3종 차트
+    st.markdown("#### 🌊 연간 현금흐름 분석 (수입 vs 지출 vs FCF)")
+    cy1, cy2, cy3 = st.columns(3)
+    cy1.plotly_chart(draw_stacked_bar(sub, in_items_y, "📥 연 유입 현금(만)"), use_container_width=True)
+    cy2.plotly_chart(draw_stacked_bar(sub, out_items_y, "📤 연 지출 상세(만)"), use_container_width=True)
+    cy3.plotly_chart(draw_fcf_bar(sub, "연_FCF_만", "💵 연 잉여현금(FCF)"), use_container_width=True)
 
 with t_tab:
     st.header("⚖️ 상세 세무 분석 (단위: 만원)")
@@ -607,8 +638,8 @@ with d_tab:
     st.subheader("📋 전체 상세 데이터")
     
     cols_to_show = ["연도", "순자산_억", "총자산_억", "부동산_억", "금융자산_억", "예금_억", "대출_억", 
-                    "총수입_만", "월_순현금_만", "월_지출_만", "월_생활비_만", "월_양육비_만", "월_원리금_만", 
-                    "월_보유세_만", "월_소득등세금_만", "월_이벤트_만", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만", "이벤트"]
+                    "연_총수입_만", "연_총지출_만", "연_FCF_만", "월_순현금_만", "월_지출_만", "월_생활비_만", "월_양육비_만", "월_원리금_만", 
+                    "보유세_만", "금융소득세_만", "이벤트"]
     d_disp = df_res[cols_to_show].copy()
     
     for col in d_disp.columns:
