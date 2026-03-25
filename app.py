@@ -44,6 +44,70 @@ st.markdown("---")
 
 # --- 2. 데이터 유지 (세션 스테이트) ---
 if 're_trades' not in st.session_state: st.session_state.re_trades = []
+if 'events' not in st.session_state: st.session_state.events = []import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+import json
+import os
+
+# --- 데이터 저장 파일명 설정 ---
+DATA_FILE = "family_finance_data.json"
+
+# 1. 페이지 설정 및 프리미엄 디자인 UI/UX
+st.set_page_config(page_title="우리 가족 자산 마스터 v16.0", layout="wide")
+
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
+    
+    html, body, [class*="css"] { 
+        font-family: 'Noto Sans KR', sans-serif; 
+        font-size: 20px !important; 
+    }
+    
+    section[data-testid="stSidebar"] {
+        background-color: #e0f2fe !important;
+        border-right: 1px solid #bae6fd;
+    }
+    section[data-testid="stSidebar"] .stMarkdown p, 
+    section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] .stHeader,
+    section[data-testid="stSidebar"] .stSelectbox label {
+        color: #000000 !important;
+        font-weight: 700 !important;
+    }
+
+    div[data-testid="stMetric"] {
+        background-color: #ffffff; padding: 25px !important; border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 6px solid #0ea5e9;
+    }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 22px !important; font-weight: 700; padding: 12px 30px;
+    }
+    .stButton>button {
+        width: 100%; border-radius: 12px; font-weight: 700; background-color: #0ea5e9; color: white; height: 3.5rem;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v16.0")
+st.markdown("---")
+
+# --- 2. 데이터 유지 및 자동 불러오기 로직 ---
+# 사이트 최초 접속 시 로컬 파일에서 데이터를 읽어와 세션 스테이트에 복원
+if 'data_loaded' not in st.session_state:
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+            for k, v in saved_data.items():
+                st.session_state[k] = v
+        except Exception as e:
+            pass # 파일이 깨졌거나 읽을 수 없으면 무시하고 기본값 사용
+    st.session_state.data_loaded = True
+
+# 저장된 리스트 데이터가 없으면 기본값 세팅
+if 're_trades' not in st.session_state: st.session_state.re_trades = []
 if 'events' not in st.session_state: st.session_state.events = []
 if 'kids' not in st.session_state:
     st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}]
@@ -66,7 +130,7 @@ with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=Tru
         
         h_ages = list(range(40, 81))
         h_opts = [f"{1995 + a}년 ({a}세)" for a in h_ages]
-        h_ret_sel = st.selectbox("남편 은퇴 시점", h_opts, index=h_ages.index(55), key="h_ret_in")
+        h_ret_sel = st.selectbox("남편 은퇴 시점", h_opts, index=h_ages.index(55) if 'h_ret_in' not in st.session_state else None, key="h_ret_in")
         h_ret_age = h_ages[h_opts.index(h_ret_sel)]
         
         h_sev_pay = st.number_input("예상 퇴직금(만)", value=10000, step=1000, key="h_sev_in")
@@ -79,7 +143,7 @@ with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=Tru
         
         w_ages = list(range(40, 81))
         w_opts = [f"{1994 + a}년 ({a}세)" for a in w_ages]
-        w_ret_sel = st.selectbox("아내 은퇴 시점", w_opts, index=w_ages.index(55), key="w_r_in")
+        w_ret_sel = st.selectbox("아내 은퇴 시점", w_opts, index=w_ages.index(55) if 'w_r_in' not in st.session_state else None, key="w_r_in")
         w_ret_age = w_ages[w_opts.index(w_ret_sel)]
         
         w_sev_pay = st.number_input("예상 퇴직금(만)", value=8000, step=1000, key="w_sev_in")
@@ -126,7 +190,7 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
     
     for i, tr in enumerate(st.session_state.re_trades):
         st.markdown(f"**📍 계획 #{i+1}**")
-        tr['year'] = st.number_input(f"매수 연도 {i}", start_yr, 2090, tr['year'], key=f"tr_y_{i}")
+        tr['year'] = st.number_input(f"매수 연도 {i}", start_yr, 2090, tr.get('year', start_yr+10), key=f"tr_y_{i}")
         tr['new_price'] = st.number_input(f"신규 주택 매수가(만) {i}", value=tr.get('new_price', 300000), step=10000, key=f"tr_np_{i}")
         
         est_sale = temp_price * ((1 + re_gr_rate)**(max(0, tr['year'] - temp_yr))) * 0.95
@@ -160,7 +224,7 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
             st.session_state.kids.pop(i)
             st.rerun()
             
-        kid['birth'] = st.number_input(f"출생년 {i}", 2024, 2050, kid['birth'], key=f"kb_{i}")
+        kid['birth'] = st.number_input(f"출생년 {i}", 2024, 2050, kid.get('birth', 2027), key=f"kb_{i}")
         c1, c2 = st.columns(2)
         kid['costs'][0] = c1.number_input(f"영유아 {i}", value=kid['costs'][0], key=f"kc0_{i}")
         kid['costs'][1] = c2.number_input(f"초등 {i}", value=kid['costs'][1], key=f"kc1_{i}")
@@ -174,13 +238,13 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
     
     for i, ev in enumerate(st.session_state.events):
         col1, col2 = st.columns([3, 1])
-        ev['name'] = col1.text_input(f"명칭 {i}", ev['name'], key=f"ev_n_{i}")
+        ev['name'] = col1.text_input(f"명칭 {i}", ev.get('name', '이벤트'), key=f"ev_n_{i}")
         if col2.button("삭제", key=f"ev_del_{i}"):
             st.session_state.events.pop(i)
             st.rerun()
             
-        ev['year'] = st.number_input(f"년도 {i}", start_yr, 2095, ev['year'], key=f"ev_y_{i}")
-        ev['cost'] = st.number_input(f"비용 {i}", 0, 1000000, ev['cost'], key=f"ev_c_{i}")
+        ev['year'] = st.number_input(f"년도 {i}", start_yr, 2095, ev.get('year', start_yr+3), key=f"ev_y_{i}")
+        ev['cost'] = st.number_input(f"비용 {i}", 0, 1000000, ev.get('cost', 6000), key=f"ev_c_{i}")
 
 # (8) 은퇴 시점 리밸런싱 & 배당 자산 배분
 with st.sidebar.expander("👵 은퇴 시점 리밸런싱 & 배당", expanded=False):
@@ -216,7 +280,7 @@ def run_simulation():
         ev_list, pension = [], 0
         t_acq_total, t_gain_total = 0, 0
         
-        # 1. 소득 및 퇴직금 편입 로직
+        # 1. 소득 및 퇴직금
         inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
         inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
         if h_age >= 65: pension += (h_p_amt * 12)
@@ -230,7 +294,7 @@ def run_simulation():
             c_inv += w_sev_pay
             ev_list.append("👩‍🦳아내 은퇴(퇴직금)")
         
-        # 2. 부동산 갈아타기 (세금 이중차감 완벽 분리)
+        # 2. 부동산 갈아타기
         for tr in st.session_state.re_trades:
             if year == tr['year']:
                 gain = max(0, c_re - c_re_base) * 0.20
@@ -238,16 +302,15 @@ def run_simulation():
                 t_gain_total += gain
                 t_acq_total += acq
                 
-                # 자금 조달 및 현금흐름 정산
-                c_cash += (c_re - gain) # 양도세 차감 후 순수 매각대금 입금
-                c_cash -= c_debt        # 기존 대출 상환
+                c_cash += (c_re - gain)
+                c_cash -= c_debt
                 
                 c_inv -= tr['use_inv']
                 c_cash += tr['use_inv']
                 
                 new_debt = tr.get('new_debt_amt', 60000)
                 c_cash += new_debt
-                c_cash -= (tr['new_price'] + acq) # 신규 주택 매수 및 취득세
+                c_cash -= (tr['new_price'] + acq)
                 
                 c_debt = new_debt
                 c_re = tr['new_price']
@@ -259,7 +322,7 @@ def run_simulation():
                 
                 ev_list.append("🏠갈아타기")
 
-        # 3. 은퇴 시점 부동산 다운사이징 (리밸런싱)
+        # 3. 은퇴 시점 부동산 다운사이징
         if year == final_ret_year and ret_re_down_ratio > 0:
             down_ratio = ret_re_down_ratio / 100
             downsize_amt = c_re * down_ratio
@@ -268,7 +331,6 @@ def run_simulation():
             ds_gain = max(0, downsize_amt - base_cost) * 0.20
             t_gain_total += ds_gain
             
-            # 양도세 정산 후 남은 금액을 즉시 금융투자 자산으로 편입!
             net_proceeds = downsize_amt - ds_gain
             c_inv += net_proceeds  
             
@@ -276,12 +338,11 @@ def run_simulation():
             c_re_base -= base_cost
             ev_list.append(f"📉주택축소({ret_re_down_ratio}%)")
 
-        # 4. 일상 세금 및 양육비 (부동산 거래세 제외)
+        # 4. 세금 및 양육비
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
         t_fin_tax = (c_inv * 0.03) * 0.154 if c_inv > 0 else 0
         
-        # 거래세(t_gain_total, t_acq_total)는 자산 교환 시 차감했으므로 경상 지출에서 제외!
         total_tax_y = (total_income_y * 0.15) + t_hold + t_comp + t_fin_tax
         
         k_total = 0
@@ -310,7 +371,7 @@ def run_simulation():
         elif c_debt > 0:
             repay_a = interest_a
         
-        # 6. 지출 및 자산배분 (현금흐름 폭포수 정산)
+        # 6. 지출 및 자산배분
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         ev_cost = sum(ev['cost'] for ev in st.session_state.events if ev['year'] == year)
         
@@ -456,3 +517,27 @@ with d_tab:
             else: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.0f}")
             
     st.plotly_chart(draw_premium_table(d_disp), use_container_width=True)
+
+# --- 6. 사용자 데이터 자동 저장 로직 (맨 마지막에 실행) ---
+# 사용자가 값을 수정하여 스크립트가 재실행될 때마다 최신 값을 백업합니다.
+static_keys = [
+    'sys_start_yr', 'h_s_in', 'h_br_in', 'h_i_in', 'h_ret_in', 'h_sev_in', 'h_p_in',
+    'w_s_in', 'w_br_in', 'w_inc_in', 'w_r_in', 'w_sev_in', 'w_p_in',
+    'liv_m_in', 'liv_g_in', 'inv_ini_in', 'inv_gr_in', 'inv_rat_in',
+    'debt_ini_in', 'debt_r_in', 'debt_t_in', 'debt_tp_in', 're_ini_in', 're_gr_in',
+    'ret_down_r', 'ret_schd', 'ret_jepq'
+]
+data_to_save = {
+    're_trades': st.session_state.re_trades,
+    'events': st.session_state.events,
+    'kids': st.session_state.kids
+}
+for k in static_keys:
+    if k in st.session_state:
+        data_to_save[k] = st.session_state[k]
+
+try:
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
+except Exception:
+    pass # 파일 쓰기 권한 이슈 등이 있을 경우 에러 방지
