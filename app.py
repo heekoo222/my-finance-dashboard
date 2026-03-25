@@ -342,36 +342,43 @@ def run_simulation():
         for kid in st.session_state.kids:
             ka = year - kid['birth']
             sch_stage = ""
-            if 0<=ka<=7: 
-                k_total += kid['costs'][0]*12
-                if ka == 7: sch_stage = f"👶{kid['name']} 초교 입학"
-            elif 8<=ka<=13: 
-                k_total += kid['costs'][1]*12
-                if ka == 13: sch_stage = f"🧒{kid['name']} 중교 입학"
-            elif 14<=ka<=16: 
-                k_total += kid['costs'][2]*12
-                if ka == 16: sch_stage = f"🧑{kid['name']} 고교 입학"
-            elif 17<=ka<=19: 
-                k_total += kid['costs'][3]*12
-                if ka == 19: sch_stage = f"👨‍🎓{kid['name']} 대학교 입학"
-            elif 20<=ka<=23: 
-                k_total += kid['costs'][4]*12
-                if ka == 23: sch_stage = f"💼{kid['name']} 대학 졸업/독립"
+            if ka == 7: sch_stage = f"👶{kid['name']} 초교 입학"
+            elif ka == 13: sch_stage = f"🧒{kid['name']} 중교 입학"
+            elif ka == 16: sch_stage = f"🧑{kid['name']} 고교 입학"
+            elif ka == 19: sch_stage = f"👨‍🎓{kid['name']} 대학 입학"
+            elif ka == 23: sch_stage = f"💼{kid['name']} 독립"
+            
+            if 0<=ka<=7: k_total += kid['costs'][0]*12
+            elif 8<=ka<=13: k_total += kid['costs'][1]*12
+            elif 14<=ka<=16: k_total += kid['costs'][2]*12
+            elif 17<=ka<=19: k_total += kid['costs'][3]*12
+            elif 20<=ka<=23: k_total += kid['costs'][4]*12
             
             if sch_stage: ev_list.append(sch_stage)
             if year == kid['birth']: ev_list.append(f"🍼{kid['name']} 탄생")
 
-        # 5. 부채 상환 계산
+        # 5. 부채 상환 계산 (ZeroDivisionError 완벽 방어)
         interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
+        
         if c_debt > 0 and rem_debt_term > 0:
             if curr_debt_type == "원리금균등":
-                pmt = (c_debt * curr_debt_r * (1+curr_debt_r)**rem_debt_term) / ((1+curr_debt_r)**rem_debt_term - 1) if curr_debt_r > 0 else (c_debt / rem_debt_term)
+                if curr_debt_r > 0:
+                    denom = ((1 + curr_debt_r) ** rem_debt_term) - 1
+                    # 수학적으로 분모가 0이 되는 극한의 예외 케이스 방어
+                    if denom > 0:
+                        pmt = (c_debt * curr_debt_r * ((1 + curr_debt_r) ** rem_debt_term)) / denom
+                    else:
+                        pmt = c_debt / rem_debt_term
+                else:
+                    pmt = c_debt / rem_debt_term
+                    
                 principal_a = pmt - interest_a
                 repay_a = pmt
             else:
                 principal_a = c_debt / rem_debt_term
                 repay_a = principal_a + interest_a
+            
             rem_debt_term -= 1
         elif c_debt > 0:
             repay_a = interest_a
@@ -453,11 +460,18 @@ if final_ret_yr <= end_yr:
     col4.metric(f"은퇴({final_ret_yr}년) 시 순자산", f"{ret_row['순자산_억']:.2f}억")
     st.markdown("---")
 
+def draw_premium_table(df):
+    fig = go.Figure(data=[go.Table(
+        header=dict(values=list(df.columns), fill_color='#0ea5e9', font=dict(color='white', size=16, family="Noto Sans KR"), align='center', height=45),
+        cells=dict(values=[df[col] for col in df.columns], fill_color='#f8fafc', font=dict(color='#0f172a', size=15, family="Noto Sans KR"), align='center', height=35))
+    ])
+    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=650)
+    return fig
+
 # 차트 하단 범례 겹침 방지 최적화 함수
 def draw_stacked_bar(data, items, title):
     fig = go.Figure()
     for col_name, label_name, color in items:
-        # Hover 텍스트에서 <br> 대신 \n을 사용한 데이터를 올바르게 렌더링하도록 처리
         fig.add_trace(go.Bar(
             x=data["연도"], y=data[col_name], name=label_name, marker_color=color, customdata=data["이벤트"],
             hovertemplate=f"<b>%{{x}}년</b><br>{label_name}: %{{y:,.0f}}만<br>--------------------<br>%{{customdata}}<extra></extra>"
@@ -542,17 +556,12 @@ with t_tab:
     st.info("💡 **세무 시뮬레이션 가정 사항**\n* **취득세:** 갈아타기 주택 매수가의 3.3% 일괄 적용\n* **양도세:** 기존 주택 시세 차익의 20% 일괄 적용\n* **금융소득세:** 매년 발생하는 배당금의 15.4%를 세금 지출로 자동 차감 (연간/월간 지출 차트에 '세금'으로 합산됨)", icon="ℹ️")
     
     st.header("⚖️ 상세 세무 분석 테이블 (단위: 만원)")
-    
-    # 가시성을 극대화한 네이티브 표(Dataframe) 출력 로직
     t_disp = df_res[["연도", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만", "이벤트"]].copy()
     
-    # 천단위 콤마 포맷 적용
     for col in ["보유세_만", "금융소득세_만", "양도세_만", "취득세_만"]:
         t_disp[col] = t_disp[col].apply(lambda x: f"{x:,.0f}")
         
     t_disp.columns = ["연도", "🏠 보유세(재산+종부)", "📈 금융소득세(배당등)", "💸 양도세", "📝 취득세", "🚩 관련 이벤트"]
-    
-    # 최신 네이티브 데이터프레임으로 출력 (정렬, 크기조절 등 최상급 가시성 제공)
     st.dataframe(t_disp, use_container_width=True, hide_index=True, height=600)
 
 with s_tab:
@@ -627,7 +636,7 @@ with d_tab:
             if "_억" in col: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.2f}")
             else: d_disp[col] = d_disp[col].apply(lambda x: f"{x:,.0f}")
             
-    # 네이티브 데이터프레임으로 출력하여 헤더 날아감 방지 및 가시성 극대화
+    d_disp["이벤트"] = d_disp["이벤트"].apply(lambda x: str(x).replace("<br>", " / "))
     st.dataframe(d_disp, use_container_width=True, hide_index=True, height=650)
 
 # --- 6. 사용자 데이터 자동 저장 로직 ---
