@@ -44,7 +44,7 @@ st.markdown("---")
 
 # --- 2. 데이터 유지 (세션 스테이트) ---
 if 're_trades' not in st.session_state: st.session_state.re_trades = []
-if 'events' not in st.session_state: st.session_state.events = []import pandas as pd
+if 'events' not in st.session_state: st.session_state.events = []
 import plotly.graph_objects as go
 import json
 import os
