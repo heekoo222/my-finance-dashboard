@@ -143,7 +143,7 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
     re_init_val = st.number_input("현재 집 가액(만)", value=150000, key="re_ini_in")
     re_gr_rate = st.number_input("부동산 상승률(%)", value=4.0, key="re_gr_in") / 100
     if st.button("➕ 갈아타기 추가"):
-        st.session_state.re_trades.append({"year": start_yr+10, "new_price": 300000, "use_inv": 0, "new_debt_amt": debt_init, "use_cash": 0})
+        st.session_state.re_trades.append({"year": start_yr+10, "new_price": 250000, "use_inv": 60000, "new_debt_amt": 80000, "use_cash": 0})
     
     temp_price = re_init_val
     temp_yr = start_yr
@@ -151,19 +151,26 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
     for i, tr in enumerate(st.session_state.re_trades):
         st.markdown(f"**📍 계획 #{i+1}**")
         tr['year'] = st.number_input(f"매수 연도 {i}", start_yr, 2090, tr.get('year', start_yr+10), key=f"tr_y_{i}")
-        tr['new_price'] = st.number_input(f"신규 주택 매수가(만) {i}", value=tr.get('new_price', 300000), step=10000, key=f"tr_np_{i}")
+        tr['new_price'] = st.number_input(f"신규 주택 매수가(만) {i}", value=tr.get('new_price', 250000), step=10000, key=f"tr_np_{i}")
         
-        est_sale = temp_price * ((1 + re_gr_rate)**(max(0, tr['year'] - temp_yr))) * 0.95
+        # UI 가이드용 예상 필요 자금 계산
+        est_price = temp_price * ((1 + re_gr_rate)**(max(0, tr['year'] - temp_yr)))
+        est_gain = max(0, est_price - re_init_val) * 0.20
+        est_sale = est_price - est_gain
         acq_tax = tr['new_price'] * 0.033
-        gap = tr['new_price'] + acq_tax - est_sale
         
-        st.info(f"예상 매각대금(세후): {est_sale/10000:.2f}억\n주택 교환 순수 Gap: {gap/10000:.2f}억")
-        st.caption("🔻 자금 조달 계획 (모자란 금액은 **신규 대출**에 강제 합산됩니다)")
+        years_passed = max(0, tr['year'] - start_yr)
+        est_rem_debt = max(0, debt_init - (debt_init / debt_term * years_passed)) if debt_term > 0 else 0
+        gap = tr['new_price'] + acq_tax - est_sale + est_rem_debt
+        
+        st.info(f"💡 **[예상 필요 조달액: 약 {gap/10000:.2f}억]**\n"
+                f"신규주택({tr['new_price']/10000:.1f}억) + 취득세 + 기존대출상환 - 기존주택매각")
+        st.caption("🔻 위 금액에 맞춰 신규대출/금융매도/예금사용을 세팅하세요.")
         
         c1, c2, c3 = st.columns(3)
-        tr['use_inv'] = c1.number_input(f"금융 매도(만){i}", value=tr.get('use_inv', 0), step=1000, key=f"tr_inv_{i}")
-        tr['new_debt_amt'] = c2.number_input(f"신규 대출 목표{i}", value=tr.get('new_debt_amt', 60000), step=5000, key=f"tr_debt_{i}")
-        tr['use_cash'] = c3.number_input(f"보유 예금 사용{i}", value=tr.get('use_cash', 0), step=1000, key=f"tr_cash_{i}")
+        tr['new_debt_amt'] = c1.number_input(f"신규 대출 총액{i}", value=tr.get('new_debt_amt', 80000), step=5000, key=f"tr_debt_{i}")
+        tr['use_inv'] = c2.number_input(f"금융 매도(만){i}", value=tr.get('use_inv', 60000), step=1000, key=f"tr_inv_{i}")
+        tr['use_cash'] = c3.number_input(f"보유 예금(만){i}", value=tr.get('use_cash', 0), step=1000, key=f"tr_cash_{i}")
         
         temp_price = tr['new_price']
         temp_yr = tr['year']
@@ -254,7 +261,7 @@ def run_simulation():
             c_inv += w_sev_pay
             ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억 편입)")
         
-        # 2. 부동산 갈아타기
+        # 2. 부동산 갈아타기 (로직 전면 개편)
         for tr in st.session_state.re_trades:
             if year == tr['year']:
                 gain = max(0, c_re - c_re_base) * 0.20
@@ -262,31 +269,54 @@ def run_simulation():
                 t_gain_total += gain
                 t_acq_total += acq
                 
-                net_sale = c_re - gain
-                need_amt = tr['new_price'] + acq + c_debt
+                # 기존 주택 순 매각 대금 = 매도가 - 양도세 - 기존대출상환
+                old_net_proceeds = (c_re - gain) - c_debt
                 
-                req_new_debt = tr.get('new_debt_amt', 60000)
-                use_inv = tr.get('use_inv', 0)
+                # 신규 주택 총 필요 비용 = 매수가 + 취득세
+                new_total_cost = tr['new_price'] + acq
+                
+                # 순수하게 모자란 필요 금액 (Gap)
+                shortfall = new_total_cost - old_net_proceeds
+                
+                req_new_debt = tr.get('new_debt_amt', 80000)
+                use_inv = tr.get('use_inv', 60000)
                 use_cash = tr.get('use_cash', 0)
                 
+                # 사용자가 지정한 금액만큼만 한도 내에서 정확히 매도/사용
                 actual_use_inv = min(c_inv, use_inv)
                 actual_use_cash = min(c_cash, use_cash)
                 
                 c_inv -= actual_use_inv
                 c_cash -= actual_use_cash
                 
-                total_funding = net_sale + req_new_debt + actual_use_inv + actual_use_cash
-                surplus = total_funding - need_amt
+                # 사용자가 끌어온 총 자금
+                total_provided = req_new_debt + actual_use_inv + actual_use_cash
+                surplus = total_provided - shortfall
                 
                 if surplus >= 0:
-                    c_cash += surplus
+                    c_cash += surplus  # 돈이 남으면 예금으로
                     c_debt = req_new_debt
                 else:
-                    c_debt = req_new_debt + abs(surplus)
+                    # 돈이 모자라면 강제로 '신규 대출 총액'을 증가시켜 방어
+                    deficit = abs(surplus)
+                    if c_cash >= deficit:
+                        c_cash -= deficit
+                    else:
+                        deficit -= c_cash
+                        c_cash = 0
+                        if c_inv >= deficit:
+                            c_inv -= deficit
+                        else:
+                            deficit -= c_inv
+                            c_inv = 0
+                            req_new_debt += deficit # 최종 보루: 대출 증가
+                    c_debt = req_new_debt
                 
+                # 자산 상태 갱신
                 c_re = tr['new_price']
                 c_re_base = tr['new_price']
                 
+                # 대출 원리금 조건 리셋! (갈아타기 시점부터 새롭게 적용)
                 curr_debt_r = tr.get('new_debt_r', curr_debt_r)
                 curr_debt_type = tr.get('new_debt_type', curr_debt_type)
                 rem_debt_term = tr.get('new_debt_term', debt_term)
@@ -385,7 +415,7 @@ def run_simulation():
         
         event_str_tooltip = "<br>".join(ev_list) if ev_list else "특별한 이벤트 없음"
         
-        # 지출 세부 항목 계산 (월 단위 만원)
+        # 복구된 연간 데이터 및 분할된 월간 데이터 저장 (KeyError 완벽 방지)
         res.append({
             "연도": year, "순자산_억": round((c_re + c_inv + c_cash - c_debt)/10000, 2),
             "총자산_억": round((c_re + c_inv + c_cash)/10000, 2),
@@ -393,7 +423,7 @@ def run_simulation():
             "예금_억": round(c_cash/10000, 2), "대출_억": round(c_debt/10000, 2),
             "총수입_만": round(total_income_y, 0), "월_순현금_만": round(net_flow_y/12, 0), "월_지출_만": round(total_exp_y/12, 0),
             
-            # 지출 누적 막대 그래프를 위한 세부 항목 추가
+            # 지출 누적 막대 그래프를 위한 세부 항목 추가 (월 단위)
             "월_생활비_만": round(curr_living_y / 12, 0),
             "월_양육비_만": round(k_total / 12, 0),
             "월_원리금_만": round(repay_a / 12, 0),
@@ -401,7 +431,12 @@ def run_simulation():
             "월_소득등세금_만": round((tax_income_etc + t_fin_tax) / 12, 0),
             "월_이벤트_만": round(ev_cost / 12, 0),
             
-            "양도세_만": round(t_gain_total, 0), "취득세_만": round(t_acq_total, 0),
+            # 상세 세무 탭을 위한 항목 추가 (연간 단위)
+            "보유세_만": round(t_hold + t_comp, 0), 
+            "금융소득세_만": round(t_fin_tax, 0),
+            "양도세_만": round(t_gain_total, 0), 
+            "취득세_만": round(t_acq_total, 0),
+            
             "이벤트": event_str_tooltip
         })
         c_h_sal *= (1 + h_inc)
@@ -451,9 +486,13 @@ with m_tab:
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("#### 🔍 세부 지표")
-    def draw_mini(data, col, title, color):
-        f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
-                             hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<br>--------------------<br>%{customdata}<extra></extra>"))
+    def draw_mini(data, col, title, color, is_money_man=False):
+        if is_money_man:
+            f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
+                                 hovertemplate="<b>%{x}년</b><br>금액: %{y:,.0f}만<br>--------------------<br>%{customdata}<extra></extra>"))
+        else:
+            f = go.Figure(go.Bar(x=data["연도"], y=data[col], marker_color=color, customdata=data["이벤트"],
+                                 hovertemplate="<b>%{x}년</b><br>금액: %{y:.2f}억<br>--------------------<br>%{customdata}<extra></extra>"))
         f.update_layout(title=dict(text=title, font=dict(size=22)), height=360, margin=dict(l=10, r=10, t=60, b=10), template="plotly_white",
                         hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"))
         return f
@@ -562,7 +601,6 @@ with s_tab:
 with d_tab:
     st.subheader("📋 전체 상세 데이터")
     
-    # 데이터프레임 복사 후 보여줄 컬럼 순서 재조정
     cols_to_show = ["연도", "순자산_억", "총자산_억", "부동산_억", "금융자산_억", "예금_억", "대출_억", 
                     "총수입_만", "월_순현금_만", "월_지출_만", "월_생활비_만", "월_양육비_만", "월_원리금_만", 
                     "월_보유세_만", "월_소득등세금_만", "월_이벤트_만", "이벤트"]
