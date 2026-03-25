@@ -387,7 +387,7 @@ def run_simulation():
                 c_debt -= c_inv
                 c_inv = 0
             
-        c_re *= (1 + re_gr_rate)import streamlit as st
+c_re *= (1 + re_gr_rate)
 import pandas as pd
 import plotly.graph_objects as go
 import json
