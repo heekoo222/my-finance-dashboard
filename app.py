@@ -158,12 +158,12 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
         gap = tr['new_price'] + acq_tax - est_sale
         
         st.info(f"예상 매각대금(세후): {est_sale/10000:.2f}억\n주택 교환 순수 Gap: {gap/10000:.2f}억")
-        st.caption("🔻 자금 조달 계획 (기존 대출상환 포함하여 남/부족분은 현금 정산)")
+        st.caption("🔻 자금 조달 계획 (모자란 금액은 **신규 대출**에 강제 합산됩니다)")
         
         c1, c2, c3 = st.columns(3)
         tr['use_inv'] = c1.number_input(f"금융 매도(만){i}", value=tr.get('use_inv', 0), step=1000, key=f"tr_inv_{i}")
-        tr['new_debt_amt'] = c2.number_input(f"신규 대출 총액{i}", value=tr.get('new_debt_amt', 60000), step=5000, key=f"tr_debt_{i}")
-        tr['use_cash'] = c3.number_input(f"보유 예금(만){i}", value=tr.get('use_cash', 0), step=1000, key=f"tr_cash_{i}")
+        tr['new_debt_amt'] = c2.number_input(f"신규 대출 목표{i}", value=tr.get('new_debt_amt', 60000), step=5000, key=f"tr_debt_{i}")
+        tr['use_cash'] = c3.number_input(f"보유 예금 사용{i}", value=tr.get('use_cash', 0), step=1000, key=f"tr_cash_{i}")
         
         temp_price = tr['new_price']
         temp_yr = tr['year']
@@ -265,29 +265,29 @@ def run_simulation():
                 net_sale = c_re - gain
                 need_amt = tr['new_price'] + acq + c_debt  # 필요 총자금 (신규주택+취득세+기존대출상환)
                 
-                new_debt = tr.get('new_debt_amt', 60000)
+                req_new_debt = tr.get('new_debt_amt', 60000)
                 use_inv = tr.get('use_inv', 0)
                 use_cash = tr.get('use_cash', 0)
                 
-                c_inv -= use_inv
-                c_cash -= use_cash
+                # 사용자가 지정한 한도 내에서 실제 보유량까지만 인출
+                actual_use_inv = min(c_inv, use_inv)
+                actual_use_cash = min(c_cash, use_cash)
                 
-                # 정산: (기존주택 매각액 + 신규대출 + 매도한 금융/예금) - (필요 총자금)
-                surplus = (net_sale + new_debt + use_inv + use_cash) - need_amt
+                c_inv -= actual_use_inv
+                c_cash -= actual_use_cash
                 
-                if surplus > 0:
-                    c_cash += surplus
-                elif surplus < 0:
-                    # 모자라면 예금 먼저 까고, 그래도 모자라면 투자자산 추가 인출
-                    c_cash += surplus
-                    if c_cash < 0:
-                        c_inv += c_cash
-                        c_cash = 0
-                        if c_inv < 0:
-                            new_debt -= c_inv  # 대출 강제 증가
-                            c_inv = 0
+                # 조달 가능한 총 자금: 순매각대금 + 목표 신규대출 + 매도한 금융/예금
+                total_funding = net_sale + req_new_debt + actual_use_inv + actual_use_cash
                 
-                c_debt = new_debt
+                surplus = total_funding - need_amt
+                
+                if surplus >= 0:
+                    c_cash += surplus  # 자금이 남으면 예금 통장으로
+                    c_debt = req_new_debt
+                else:
+                    # 자금이 모자라면 투자자산 자동 매각을 막고, 모자란 만큼 강제로 대출을 끌어옴!
+                    c_debt = req_new_debt + abs(surplus)
+                
                 c_re = tr['new_price']
                 c_re_base = tr['new_price']
                 
@@ -364,7 +364,7 @@ def run_simulation():
             spec_ev_names = [ev['name'] for ev in st.session_state.events if ev['year'] == year]
             ev_list.append(f"🎁이벤트: {','.join(spec_ev_names)}")
         
-        # 6. 지출 및 자산배분
+        # 6. 지출 및 자산배분 (일반 생활비 결산)
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
