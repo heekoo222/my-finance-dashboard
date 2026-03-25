@@ -39,9 +39,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v16.0")
-st.markdown("---")
-
 # --- 2. 데이터 유지 (세션 스테이트) ---
 if 're_trades' not in st.session_state: st.session_state.re_trades = []
 if 'events' not in st.session_state: st.session_state.events = []
