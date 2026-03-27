@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import json
 import urllib.request
+import copy
 
 # =====================================================================
 # ☁️ 회원님의 전용 클라우드 DB 주소
@@ -11,7 +12,7 @@ FIREBASE_URL = "https://familiy-financial-plan-default-rtdb.asia-southeast1.fire
 
 st.set_page_config(page_title="우리 가족 자산 마스터 (Ultimate Ver.)", layout="wide")
 
-# 🌟 디자인 유지: 연한 하늘색 배경 + 검은색 굵은 글씨
+# 🌟 기존 디자인 완벽 유지
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
@@ -82,27 +83,110 @@ if not user_id:
     st.info("👈 **왼쪽 사이드바에 아이디를 입력하여 나만의 재무설계를 시작하세요!**")
     st.stop()
 
+# 🌟 V20.0 핵심: 데이터 마이그레이션 및 시나리오(Case) 분리 로직
 user_data = db.get(user_id, {})
+if 'cases' not in user_data:
+    # 기존 단일 데이터를 '기본 시나리오'라는 방으로 이사시킴
+    old_data = {k: v for k, v in user_data.items() if k not in ['cases', 'last_active_case']}
+    user_data = {'cases': {'기본 시나리오': old_data}, 'last_active_case': '기본 시나리오'}
+    db[user_id] = user_data
+    save_cloud_db(db)
+
+def load_case_to_session(case_name):
+    case_data = user_data['cases'].get(case_name, {})
+    for k in static_keys:
+        if k in case_data: st.session_state[k] = case_data[k]
+    st.session_state.re_trades = case_data.get('re_trades', [])
+    st.session_state.events = case_data.get('events', [])
+    st.session_state.kids = case_data.get('kids', [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}])
+    st.session_state.h_leaves = case_data.get('h_leaves', [])
+    st.session_state.w_leaves = case_data.get('w_leaves', [])
+
+def save_current_to_db():
+    case_name = st.session_state.current_case
+    case_data = user_data['cases'].get(case_name, {})
+    for k in static_keys:
+        if k in st.session_state:
+            case_data[k] = st.session_state[k]
+    case_data['re_trades'] = st.session_state.get('re_trades', [])
+    case_data['events'] = st.session_state.get('events', [])
+    case_data['kids'] = st.session_state.get('kids', [])
+    case_data['h_leaves'] = st.session_state.get('h_leaves', [])
+    case_data['w_leaves'] = st.session_state.get('w_leaves', [])
+    user_data['cases'][case_name] = case_data
+    db[user_id] = user_data
+    save_cloud_db(db)
+
+# 접속 시 세션 초기화
 if 'current_user' not in st.session_state or st.session_state.current_user != user_id:
     st.session_state.current_user = user_id
-    st.session_state.re_trades = user_data.get('re_trades', [])
-    st.session_state.events = user_data.get('events', [])
-    st.session_state.kids = user_data.get('kids', [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}])
-    st.session_state.h_leaves = user_data.get('h_leaves', [])
-    st.session_state.w_leaves = user_data.get('w_leaves', [])
-    for k in static_keys:
-        if k in user_data: st.session_state[k] = user_data[k]
-
-if 're_trades' not in st.session_state: st.session_state.re_trades = []
-if 'events' not in st.session_state: st.session_state.events = []
-if 'kids' not in st.session_state: st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}]
-if 'h_leaves' not in st.session_state: st.session_state.h_leaves = []
-if 'w_leaves' not in st.session_state: st.session_state.w_leaves = []
+    st.session_state.current_case = user_data.get('last_active_case', '기본 시나리오')
+    load_case_to_session(st.session_state.current_case)
 
 st.sidebar.success(f"🟢 **{user_id}** 계정 접속됨")
 st.sidebar.markdown("---")
 
-st.title("💎 우리 가족 통합 자산 프로젝션 v19.1")
+# 🌟 V20.0 핵심 UI: 맨 위 오른쪽 시나리오 관리 드롭다운
+c_title, c_case = st.columns([6, 4])
+with c_title:
+    st.title("💎 우리 가족 자산 프로젝션 v20.0")
+with c_case:
+    st.write("") # 상단 여백 조절
+    with st.expander(f"📂 시나리오 관리: **{st.session_state.current_case}**", expanded=False):
+        case_list = list(user_data['cases'].keys())
+        
+        # 1. 시나리오 변경
+        selected_case = st.selectbox("현재 시나리오 선택", case_list, index=case_list.index(st.session_state.current_case))
+        if selected_case != st.session_state.current_case:
+            save_current_to_db() # 기존 내용 킵
+            st.session_state.current_case = selected_case
+            user_data['last_active_case'] = selected_case
+            load_case_to_session(selected_case)
+            st.rerun()
+            
+        st.markdown("---")
+        
+        # 2. 시나리오 이름 수정
+        new_name = st.text_input("시나리오 이름 수정", value=st.session_state.current_case)
+        if st.button("이름 변경") and new_name and new_name != st.session_state.current_case:
+            if new_name not in case_list:
+                save_current_to_db()
+                user_data['cases'][new_name] = user_data['cases'].pop(st.session_state.current_case)
+                st.session_state.current_case = new_name
+                user_data['last_active_case'] = new_name
+                db[user_id] = user_data
+                save_cloud_db(db)
+                st.rerun()
+            else:
+                st.warning("이미 존재하는 이름입니다.")
+        
+        st.markdown("---")
+        
+        # 3. 시나리오 복사 (새로 만들기)
+        if st.button("➕ 현재 가정으로 새 시나리오 복사", use_container_width=True):
+            save_current_to_db()
+            new_idx = len(case_list) + 1
+            new_case_name = f"새 시나리오 {new_idx}"
+            user_data['cases'][new_case_name] = copy.deepcopy(user_data['cases'][st.session_state.current_case])
+            st.session_state.current_case = new_case_name
+            user_data['last_active_case'] = new_case_name
+            db[user_id] = user_data
+            save_cloud_db(db)
+            st.rerun()
+            
+        # 4. 시나리오 삭제
+        if st.button("🗑️ 현재 시나리오 삭제", use_container_width=True):
+            if len(case_list) > 1:
+                user_data['cases'].pop(st.session_state.current_case)
+                st.session_state.current_case = list(user_data['cases'].keys())[0]
+                user_data['last_active_case'] = st.session_state.current_case
+                db[user_id] = user_data
+                save_cloud_db(db)
+                load_case_to_session(st.session_state.current_case)
+                st.rerun()
+            else:
+                st.warning("최소 1개의 시나리오는 남겨야 합니다.")
+
 st.markdown("---")
 
 st.sidebar.title("🛠️ 재무 전략 설정")
@@ -115,7 +199,6 @@ with st.sidebar.expander("📅 시나리오 및 기본 설정", expanded=True):
     h_birth_yr = c3.number_input("남편 출생년도", value=st.session_state.get('h_birth_yr', 1995), key="h_birth_yr")
     w_birth_yr = c4.number_input("아내 출생년도", value=st.session_state.get('w_birth_yr', 1994), key="w_birth_yr")
 
-# 🌟 설명 툴팁 유지
 pension_help_text = "은퇴 직후부터 평생 매월 수령할 '개인연금(연금저축펀드, 보험 등)' 및 '퇴직연금(IRP 등)'의 합산 금액을 세전 기준으로 입력하세요. 엔진이 매년 5.5%의 연금소득세를 자동으로 떼고 현금흐름에 반영합니다."
 
 with st.sidebar.expander("👤 남편 소득(세전) 및 휴직/은퇴", expanded=False):
@@ -591,7 +674,6 @@ def run_simulation():
             "net_flow_raw": net_flow_y
         })
         
-        # 🌟 급여 인상률 반영 (이전 에러 해결 부위)
         c_h_sal *= (1 + h_inc)
         c_w_sal *= (1 + w_inc)
         
@@ -696,7 +778,7 @@ with m_tab:
                    ("연_보유세_만", "보유세", "#ef4444"), ("연_근로소득세_만", "근로소득/4대보험", "#8b5cf6"), ("연_배당연금세_만", "배당/연금세", "#d946ef"), ("연_의료비_만", "의료/간병비", "#f43f5e"), ("연_이벤트_만", "이벤트/증여세", "#ec4899")]
 
     st.markdown("#### 🌊 월간 현금흐름 분석 (수입 vs 지출 vs FCF)")
-    st.info("💡 **FCF(잉여현금흐름)란?** 총 수입에서 모든 지출을 빼고 남은 '순수 여윳돈'입니다. 적자(-)가 발생할 경우 **보유 중인 금융자산(주식 등)을 1순위로 매각하여 자동으로 부족한 생활비를 충당**하도록 설계되었습니다.", icon="💵")
+    st.info("💡 **FCF(잉여현금흐름)란?** 총 수입에서 모든 지출을 빼고 남은 '순수 여윳돈'입니다. 적자(-)가 발생할 경우 **보유 중인 금융자산(주식 등)을 1순위로 매각하여 자동으로 부족한 생활비를 충당**하도록 설계되었습니다.")
     
     cm1, cm2, cm3 = st.columns(3)
     cm1.plotly_chart(draw_stacked_bar(sub, in_items_m, "📥 월 유입 현금(만)", "월_총수입_만"), use_container_width=True)
@@ -776,7 +858,7 @@ with d_tab:
 
 st.markdown("---")
 
-# --- 🌟 6. V19 신규 기능 하단 배치 (FIRE 계기판 & AI 리포트) ---
+# --- 🌟 V19 신규 기능 하단 배치 (FIRE 계기판 & AI 리포트) ---
 def render_fire_gauge(df):
     ret_start_yr = max(h_birth_yr + 55, w_birth_yr + 55) 
     ret_df = df[df["연도"] >= ret_start_yr]
@@ -815,12 +897,4 @@ with c2:
 
 # --- 7. 데이터 클라우드 자동 저장 ---
 if st.session_state.get('current_user'):
-    for k in static_keys:
-        if k in st.session_state: user_data[k] = st.session_state[k]
-    user_data['re_trades'] = st.session_state.get('re_trades', [])
-    user_data['events'] = st.session_state.get('events', [])
-    user_data['kids'] = st.session_state.get('kids', [])
-    user_data['h_leaves'] = st.session_state.get('h_leaves', [])
-    user_data['w_leaves'] = st.session_state.get('w_leaves', [])
-    db[st.session_state.current_user] = user_data
-    save_cloud_db(db)
+    save_current_to_db()
