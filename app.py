@@ -81,11 +81,12 @@ if 'current_user' not in st.session_state or st.session_state.current_user != us
     
     static_keys = [
         'sys_start_yr', 'sys_end_yr', 'h_birth_yr', 'w_birth_yr', 
-        'h_s_in', 'h_br_in', 'h_i_in', 'h_promo_yr', 'h_promo_r', 'h_ret_in', 'h_sev_in', 'h_p_in', 
-        'w_s_in', 'w_br_in', 'w_inc_in', 'w_promo_yr', 'w_promo_r', 'w_r_in', 'w_sev_in', 'w_p_in', 
+        'h_s_in', 'h_br_in', 'h_i_in', 'h_promo_yr', 'h_promo_r', 'h_ret_in', 'h_sev_in', 'h_p_in', 'h_side_in', 'h_side_end',
+        'w_s_in', 'w_br_in', 'w_inc_in', 'w_promo_yr', 'w_promo_r', 'w_r_in', 'w_sev_in', 'w_p_in', 'w_side_in', 'w_side_end',
         'liv_m_in', 'liv_g_in', 'inv_ini_in', 'inv_gr_in', 'inv_rat_in', 
         'debt_ini_in', 'debt_r_in', 'debt_t_in', 'debt_tp_in', 're_ini_in', 're_gr_in', 
-        'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq'
+        'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq',
+        'h_leave_yr', 'h_leave_mos', 'h_leave_pay', 'w_leave_yr', 'w_leave_mos', 'w_leave_pay', 'h_unemp', 'w_unemp'
     ]
     for k in static_keys:
         if k in user_data:
@@ -94,7 +95,7 @@ if 'current_user' not in st.session_state or st.session_state.current_user != us
 st.sidebar.success(f"🟢 **{user_id}** 계정 접속됨 (클라우드 실시간 저장 중)")
 st.sidebar.markdown("---")
 
-st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v17.0")
+st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v18.0 (정책 고증)")
 st.markdown("---")
 
 # --- 4. 사이드바: 설정 레버 ---
@@ -108,7 +109,7 @@ with st.sidebar.expander("📅 시나리오 및 기본 설정", expanded=True):
     h_birth_yr = c3.number_input("남편 출생년도", value=st.session_state.get('h_birth_yr', 1995), min_value=1950, max_value=2010, key="h_birth_yr")
     w_birth_yr = c4.number_input("아내 출생년도", value=st.session_state.get('w_birth_yr', 1994), min_value=1950, max_value=2010, key="w_birth_yr")
 
-with st.sidebar.expander("👤 부부 소득(세전) 및 상여/퇴직금", expanded=True):
+with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expanded=True):
     h_tab, w_tab = st.tabs([f"남편({str(h_birth_yr)[-2:]})", f"아내({str(w_birth_yr)[-2:]})"])
     with h_tab:
         h_sal = st.number_input("남편 월급(세전, 만)", value=st.session_state.get('h_s_in', 830), key="h_s_in")
@@ -120,6 +121,13 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 상여/퇴직금", expa
         h_promo_yr = c1.number_input("승진 예상 연도", value=st.session_state.get('h_promo_yr', start_yr+4), min_value=start_yr, key="h_promo_yr")
         h_promo_r = c2.number_input("승진 인상률(%)", value=st.session_state.get('h_promo_r', 15.0), key="h_promo_r") / 100
         
+        # 🌟 신규: 육아휴직 설정
+        st.markdown("**👶 육아휴직 계획**")
+        col1, col2, col3 = st.columns(3)
+        h_leave_yr = col1.number_input("휴직 연도", value=st.session_state.get('h_leave_yr', start_yr+1), key="h_leave_yr")
+        h_leave_mos = col2.number_input("기간(개월)", value=st.session_state.get('h_leave_mos', 0), max_value=12, key="h_leave_mos")
+        h_leave_pay = col3.number_input("월 급여(만)", value=st.session_state.get('h_leave_pay', 150), key="h_leave_pay")
+        
         st.markdown("---")
         h_ages = list(range(40, 81))
         h_opts = [f"{h_birth_yr + a}년 ({a}세)" for a in h_ages]
@@ -129,7 +137,15 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 상여/퇴직금", expa
         h_ret_sel = st.selectbox("남편 은퇴 시점", h_opts, index=h_ret_def_idx, key="h_ret_in")
         h_ret_age = h_ages[h_opts.index(h_ret_sel)]
         h_sev_pay = st.number_input("예상 퇴직금(만)", value=st.session_state.get('h_sev_in', 10000), step=1000, key="h_sev_in")
-        h_p_amt = st.number_input("월 예상연금(65세~)", value=st.session_state.get('h_p_in', 150), key="h_p_in")
+        
+        # 🌟 신규: 실업급여 체크박스
+        h_unemp = st.checkbox("은퇴 첫해 실업급여 수령 (9개월, 약 1,780만 원)", value=st.session_state.get('h_unemp', True), key="h_unemp")
+        
+        st.markdown("**🌱 은퇴 후 현금흐름**")
+        h_p_amt = st.number_input("월 예상 공적연금(65세~)", value=st.session_state.get('h_p_in', 150), key="h_p_in")
+        c1, c2 = st.columns(2)
+        h_side_in = c1.number_input("소일거리 월급(만)", value=st.session_state.get('h_side_in', 50), step=10, key="h_side_in")
+        h_side_end = c2.number_input("종료 나이(세)", value=st.session_state.get('h_side_end', 70), min_value=h_ret_age, max_value=100, key="h_side_end")
         
     with w_tab:
         w_sal = st.number_input("아내 월급(세전, 만)", value=st.session_state.get('w_s_in', 500), key="w_s_in")
@@ -141,6 +157,13 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 상여/퇴직금", expa
         w_promo_yr = c1.number_input("승진 예상 연도 ", value=st.session_state.get('w_promo_yr', start_yr+3), min_value=start_yr, key="w_promo_yr")
         w_promo_r = c2.number_input("승진 인상률(%) ", value=st.session_state.get('w_promo_r', 15.0), key="w_promo_r") / 100
         
+        # 🌟 신규: 육아휴직 설정
+        st.markdown("**👶 육아휴직 계획**")
+        col1, col2, col3 = st.columns(3)
+        w_leave_yr = col1.number_input("휴직 연도 ", value=st.session_state.get('w_leave_yr', start_yr+1), key="w_leave_yr")
+        w_leave_mos = col2.number_input("기간(개월) ", value=st.session_state.get('w_leave_mos', 12), max_value=12, key="w_leave_mos")
+        w_leave_pay = col3.number_input("월 급여(만) ", value=st.session_state.get('w_leave_pay', 150), key="w_leave_pay")
+        
         st.markdown("---")
         w_ages = list(range(40, 81))
         w_opts = [f"{w_birth_yr + a}년 ({a}세)" for a in w_ages]
@@ -150,7 +173,15 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 상여/퇴직금", expa
         w_ret_sel = st.selectbox("아내 은퇴 시점", w_opts, index=w_ret_def_idx, key="w_r_in")
         w_ret_age = w_ages[w_opts.index(w_ret_sel)]
         w_sev_pay = st.number_input("예상 퇴직금(만) ", value=st.session_state.get('w_sev_in', 8000), step=1000, key="w_sev_in")
-        w_p_amt = st.number_input("아내 월 연금(65세~)", value=st.session_state.get('w_p_in', 130), key="w_p_in")
+        
+        # 🌟 신규: 실업급여 체크박스
+        w_unemp = st.checkbox("은퇴 첫해 실업급여 수령 (9개월, 약 1,780만 원) ", value=st.session_state.get('w_unemp', True), key="w_unemp")
+        
+        st.markdown("**🌱 은퇴 후 현금흐름**")
+        w_p_amt = st.number_input("아내 월 예상연금(65세~)", value=st.session_state.get('w_p_in', 130), key="w_p_in")
+        c1, c2 = st.columns(2)
+        w_side_in = c1.number_input("소일거리 월급(만) ", value=st.session_state.get('w_side_in', 50), step=10, key="w_side_in")
+        w_side_end = c2.number_input("종료 나이(세) ", value=st.session_state.get('w_side_end', 70), min_value=w_ret_age, max_value=100, key="w_side_end")
 
 with st.sidebar.expander("💸 생활비 레버", expanded=False):
     living_monthly = st.number_input("월 고정 생활비(만)", value=st.session_state.get('liv_m_in', 450), key="liv_m_in")
@@ -282,6 +313,7 @@ def run_simulation():
         h_age, w_age = year - h_birth_yr, year - w_birth_yr
         ev_list, pension = [], 0
         t_acq_total, t_gain_total = 0, 0
+        unemp_income_y = 0
         
         if year == h_promo_yr and h_age <= h_ret_age:
             c_h_sal *= (1 + h_promo_r)
@@ -290,8 +322,27 @@ def run_simulation():
             c_w_sal *= (1 + w_promo_r)
             ev_list.append(f"🎉아내 승진({w_promo_r*100:.0f}% 인상)")
         
-        inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
-        inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
+        # 🌟 개선: 육아휴직 및 소일거리 로직
+        h_work_mos, h_leave_inc = 12, 0
+        if year == h_leave_yr and h_leave_mos > 0:
+            h_work_mos = max(0, 12 - h_leave_mos)
+            h_leave_inc = h_leave_pay * h_leave_mos
+            ev_list.append(f"👨‍🍼남편 육아휴직({h_leave_mos}개월)")
+            
+        w_work_mos, w_leave_inc = 12, 0
+        if year == w_leave_yr and w_leave_mos > 0:
+            w_work_mos = max(0, 12 - w_leave_mos)
+            w_leave_inc = w_leave_pay * w_leave_mos
+            ev_list.append(f"👩‍🍼아내 육아휴직({w_leave_mos}개월)")
+        
+        if h_age <= h_ret_age: inc_h = (c_h_sal * h_work_mos * (1+h_bonus_r)) + h_leave_inc
+        elif h_age <= h_side_end: inc_h = (h_side_in * 12)
+        else: inc_h = 0
+            
+        if w_age <= w_ret_age: inc_w = (c_w_sal * w_work_mos * (1+w_bonus_r)) + w_leave_inc
+        elif w_age <= w_side_end: inc_w = (w_side_in * 12)
+        else: inc_w = 0
+            
         if h_age >= 65: pension += (h_p_amt * 12)
         if w_age >= 65: pension += (w_p_amt * 12)
         
@@ -304,14 +355,53 @@ def run_simulation():
             blended_yield = 0.01
             
         div_income_y = c_inv * blended_yield
-        total_income_y = inc_h + inc_w + pension + div_income_y
         
+        # 🌟 개선: 국가 양육 지원금 산출 (부모급여 + 아동수당) & 자녀세액공제 인원 산출
+        gov_support_y = 0
+        tax_credit_kids = 0
+        k_total = 0
+        for kid in st.session_state.kids:
+            ka = year - kid['birth']
+            
+            # 국가지원금 계산
+            if ka == 0: gov_support_y += 110 * 12  # 부모급여 100 + 아동수당 10
+            elif ka == 1: gov_support_y += 60 * 12 # 부모급여 50 + 아동수당 10
+            elif 2 <= ka <= 7: gov_support_y += 10 * 12 # 아동수당 10
+            
+            # 자녀세액공제 대상자 카운트 (8세~20세)
+            if 8 <= ka <= 20: tax_credit_kids += 1
+            
+            sch_stage = ""
+            if ka == 7: sch_stage = f"👶{kid['name']} 초교 입학"
+            elif ka == 13: sch_stage = f"🧒{kid['name']} 중교 입학"
+            elif ka == 16: sch_stage = f"🧑{kid['name']} 고교 입학"
+            elif ka == 19: sch_stage = f"👨‍🎓{kid['name']} 대학 입학"
+            elif ka == 23: sch_stage = f"💼{kid['name']} 독립"
+            
+            if 0<=ka<=7: k_total += kid['costs'][0]*12
+            elif 8<=ka<=13: k_total += kid['costs'][1]*12
+            elif 14<=ka<=16: k_total += kid['costs'][2]*12
+            elif 17<=ka<=19: k_total += kid['costs'][3]*12
+            elif 20<=ka<=23: k_total += kid['costs'][4]*12
+            
+            if sch_stage: ev_list.append(sch_stage)
+            if year == kid['birth']: ev_list.append(f"🍼{kid['name']} 탄생")
+            
+        # 🌟 개선: 은퇴 실업급여 처리 (9개월 수령 가정)
         if year == h_ret_year:
             c_inv += h_sev_pay
-            ev_list.append(f"👨‍🦳남편 은퇴(퇴직금 {h_sev_pay//10000}억 편입)")
+            if h_unemp: 
+                unemp_income_y += 198 * 9
+                ev_list.append("💼남편 실업급여 수령")
+            ev_list.append(f"👨‍🦳남편 은퇴(퇴직금 {h_sev_pay//10000}억)")
         if year == w_ret_year:
             c_inv += w_sev_pay
-            ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억 편입)")
+            if w_unemp: 
+                unemp_income_y += 198 * 9
+                ev_list.append("💼아내 실업급여 수령")
+            ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억)")
+            
+        total_income_y = inc_h + inc_w + pension + div_income_y + gov_support_y + unemp_income_y
         
         for tr in st.session_state.re_trades:
             if year == tr['year']:
@@ -364,10 +454,8 @@ def run_simulation():
                 down_ratio = ret_re_down_ratio / 100
                 downsize_amt = c_re * down_ratio
                 base_cost = c_re_base * down_ratio
-                
                 ds_gain = max(0, downsize_amt - base_cost) * 0.20
                 t_gain_total += ds_gain
-                
                 net_proceeds = downsize_amt - ds_gain
                 c_inv += net_proceeds  
                 c_re -= downsize_amt
@@ -377,16 +465,21 @@ def run_simulation():
             if ret_debt_payoff_ratio > 0 and c_debt > 0:
                 payoff_target = c_debt * (ret_debt_payoff_ratio / 100)
                 actual_payoff = min(payoff_target, c_inv)
-                
                 if actual_payoff > 0:
                     c_inv -= actual_payoff
                     c_debt -= actual_payoff
                     ev_list.append(f"💳부채상환({ret_debt_payoff_ratio}%)")
 
-        # 🌟 개선: 세금 명확한 분리 (근로소득 vs 배당/연금)
         tax_h = get_annual_tax_and_insurance(inc_h)
         tax_w = get_annual_tax_and_insurance(inc_w)
-        tax_earned = tax_h + tax_w
+        
+        # 🌟 개선: 자녀 세액공제 적용 (소득세에서 차감)
+        child_tax_credit = 0
+        if tax_credit_kids == 1: child_tax_credit = 15
+        elif tax_credit_kids == 2: child_tax_credit = 30
+        elif tax_credit_kids >= 3: child_tax_credit = 30 + (tax_credit_kids - 2) * 30
+        
+        tax_earned = max(0, tax_h + tax_w - child_tax_credit)
         
         tax_pension = pension * 0.05 if pension > 0 else 0
         t_fin_tax = div_income_y * 0.154 if div_income_y > 0 else 0
@@ -396,25 +489,6 @@ def run_simulation():
         t_comp = max(0, (c_re - 120000) * 0.005)
         
         total_tax_y = tax_earned + tax_dividend_pension + t_hold + t_comp
-        
-        k_total = 0
-        for kid in st.session_state.kids:
-            ka = year - kid['birth']
-            sch_stage = ""
-            if ka == 7: sch_stage = f"👶{kid['name']} 초교 입학"
-            elif ka == 13: sch_stage = f"🧒{kid['name']} 중교 입학"
-            elif ka == 16: sch_stage = f"🧑{kid['name']} 고교 입학"
-            elif ka == 19: sch_stage = f"👨‍🎓{kid['name']} 대학 입학"
-            elif ka == 23: sch_stage = f"💼{kid['name']} 독립"
-            
-            if 0<=ka<=7: k_total += kid['costs'][0]*12
-            elif 8<=ka<=13: k_total += kid['costs'][1]*12
-            elif 14<=ka<=16: k_total += kid['costs'][2]*12
-            elif 17<=ka<=19: k_total += kid['costs'][3]*12
-            elif 20<=ka<=23: k_total += kid['costs'][4]*12
-            
-            if sch_stage: ev_list.append(sch_stage)
-            if year == kid['birth']: ev_list.append(f"🍼{kid['name']} 탄생")
 
         interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
@@ -470,6 +544,7 @@ def run_simulation():
             
             "연_남편소득_만": round(inc_h, 0), "연_아내소득_만": round(inc_w, 0),
             "연_배당_만": round(div_income_y, 0), "연_연금_만": round(pension, 0),
+            "연_정부지원_만": round(gov_support_y + unemp_income_y, 0), # 신규 수입
             "연_생활비_만": round(curr_living_y, 0), "연_양육비_만": round(k_total, 0),
             "연_원리금_만": round(repay_a, 0), "연_보유세_만": round(t_hold + t_comp, 0),
             "연_근로소득세_만": round(tax_earned, 0), "연_배당연금세_만": round(tax_dividend_pension, 0), "연_이벤트_만": round(ev_cost, 0),
@@ -477,6 +552,7 @@ def run_simulation():
             
             "월_남편소득_만": round(inc_h / 12, 0), "월_아내소득_만": round(inc_w / 12, 0),
             "월_배당_만": round(div_income_y / 12, 0), "월_연금_만": round(pension / 12, 0),
+            "월_정부지원_만": round((gov_support_y + unemp_income_y) / 12, 0), # 신규 수입
             "월_생활비_만": round(curr_living_y / 12, 0), "월_양육비_만": round(k_total / 12, 0),
             "월_원리금_만": round(repay_a / 12, 0), "월_보유세_만": round((t_hold + t_comp) / 12, 0),
             "월_근로소득세_만": round(tax_earned / 12, 0), "월_배당연금세_만": round(tax_dividend_pension / 12, 0), "월_이벤트_만": round(ev_cost / 12, 0),
@@ -516,31 +592,21 @@ def draw_premium_table(df):
     fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=650)
     return fig
 
-# 🌟 개선: 툴팁을 가장 보기 편하게 수정 (총액을 가장 위에 굵게 + 이벤트도 깔끔하게)
 def draw_stacked_bar(data, items, title, total_col=None):
     fig = go.Figure()
     
-    # 1. 스택 바 데이터 추가
     for col_name, label_name, color in items:
         fig.add_trace(go.Bar(
             x=data["연도"], y=data[col_name], name=label_name, marker_color=color,
-            hovertemplate="%{y:,.0f}만"
+            hovertemplate="%{y:,.0f}만<extra></extra>"
         ))
         
-    # 2. 총합계 투명 라인 추가 (툴팁 맨 위에 표시되도록)
     if total_col:
         fig.add_trace(go.Scatter(
             x=data["연도"], y=data[total_col], name="<b>[해당 연도 총합계]</b>",
             mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False,
-            hovertemplate="<b>%{y:,.0f}만</b>"
+            hovertemplate="<b>%{y:,.0f}만</b><extra></extra>"
         ))
-        
-    # 3. 이벤트 텍스트용 투명 라인 추가
-    fig.add_trace(go.Scatter(
-        x=data["연도"], y=[0]*len(data["연도"]), name="<b>[주요 이슈]</b>",
-        mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False,
-        customdata=data["이벤트"], hovertemplate="%{customdata}"
-    ))
         
     fig.update_layout(
         barmode='stack', title=dict(text=title, font=dict(size=20)),
@@ -556,12 +622,12 @@ def draw_fcf_bar(data, col_name, title):
     colors = ['#10b981' if val >= 0 else '#ef4444' for val in data[col_name]]
     fig.add_trace(go.Bar(
         x=data["연도"], y=data[col_name], name="FCF", marker_color=colors,
-        hovertemplate="%{y:,.0f}만"
+        hovertemplate="<b>%{y:,.0f}만</b><extra></extra>"
     ))
     fig.add_trace(go.Scatter(
         x=data["연도"], y=[0]*len(data["연도"]), name="<b>[주요 이슈]</b>",
         mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False,
-        customdata=data["이벤트"], hovertemplate="%{customdata}"
+        customdata=data["이벤트"], hovertemplate="%{customdata}<extra></extra>"
     ))
     fig.update_layout(
         title=dict(text=title, font=dict(size=20)),
@@ -580,10 +646,10 @@ with m_tab:
     sub = df_res.head(display_len)
 
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=sub["연도"], y=sub["총자산_억"], name="<b>[총자산]</b>", mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False, hovertemplate="<b>%{y:.2f}억</b>"))
-    fig.add_trace(go.Bar(x=sub["연도"], y=sub["순자산_억"], name="순자산", marker_color='#10b981', hovertemplate="%{y:.2f}억"))
-    fig.add_trace(go.Bar(x=sub["연도"], y=sub["대출_억"], name="부채", marker_color='#ef4444', hovertemplate="%{y:.2f}억"))
-    fig.add_trace(go.Scatter(x=sub["연도"], y=[0]*len(sub["연도"]), name="<b>[이슈]</b>", mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False, customdata=sub["이벤트"], hovertemplate="%{customdata}"))
+    fig.add_trace(go.Scatter(x=sub["연도"], y=sub["총자산_억"], name="<b>[총자산]</b>", mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False, hovertemplate="<b>%{y:.2f}억</b><extra></extra>"))
+    fig.add_trace(go.Bar(x=sub["연도"], y=sub["순자산_억"], name="순자산", marker_color='#10b981', hovertemplate="%{y:.2f}억<extra></extra>"))
+    fig.add_trace(go.Bar(x=sub["연도"], y=sub["대출_억"], name="부채", marker_color='#ef4444', hovertemplate="%{y:.2f}억<extra></extra>"))
+    fig.add_trace(go.Scatter(x=sub["연도"], y=[0]*len(sub["연도"]), name="<b>[이슈]</b>", mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False, customdata=sub["이벤트"], hovertemplate="%{customdata}<extra></extra>"))
     
     fig.update_layout(title="🏠 우리 가족 자산 계획 (단위: 억)", barmode='stack', hovermode="x unified", height=500, template="plotly_white", font=dict(size=18),
                       hoverlabel=dict(bgcolor="white", font_size=18, font_family="Noto Sans KR", align="left"))
@@ -591,8 +657,8 @@ with m_tab:
 
     st.markdown("#### 🏢 주요 자산 지표 (단위: 억)")
     def draw_mini_asset(data, col, title, color):
-        f = go.Figure(go.Bar(x=data["연도"], y=data[col], name=title.split("(")[0], marker_color=color, hovertemplate="<b>%{y:.2f}억</b>"))
-        f.add_trace(go.Scatter(x=data["연도"], y=[0]*len(data["연도"]), name="<b>[이슈]</b>", mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False, customdata=data["이벤트"], hovertemplate="%{customdata}"))
+        f = go.Figure(go.Bar(x=data["연도"], y=data[col], name=title.split("(")[0], marker_color=color, hovertemplate="<b>%{y:.2f}억</b><extra></extra>"))
+        f.add_trace(go.Scatter(x=data["연도"], y=[0]*len(data["연도"]), name="<b>[이슈]</b>", mode='lines', line=dict(color='rgba(0,0,0,0)'), showlegend=False, customdata=data["이벤트"], hovertemplate="%{customdata}<extra></extra>"))
         f.update_layout(title=dict(text=title, font=dict(size=20)), height=320, margin=dict(l=10, r=10, t=50, b=10), template="plotly_white", hovermode="x unified",
                         hoverlabel=dict(bgcolor="white", font_size=16, font_family="Noto Sans KR", align="left"))
         return f
@@ -603,17 +669,16 @@ with m_tab:
     c3.plotly_chart(draw_mini_asset(sub, "예금_억", "💰 예금(억)", "#0ea5e9"), use_container_width=True)
     st.markdown("---")
     
-    in_items_m = [("월_남편소득_만", "남편소득", "#3b82f6"), ("월_아내소득_만", "아내소득", "#ec4899"), ("월_배당_만", "배당소득", "#f59e0b"), ("월_연금_만", "공적연금", "#10b981")]
-    # 🌟 개선: 근로소득세와 배당/연금세를 완벽히 분리
+    in_items_m = [("월_남편소득_만", "남편소득", "#3b82f6"), ("월_아내소득_만", "아내소득", "#ec4899"), ("월_정부지원_만", "국가지원/실업급여", "#06b6d4"), ("월_배당_만", "배당(수입)", "#f59e0b"), ("월_연금_만", "공적연금", "#10b981")]
     out_items_m = [("월_생활비_만", "생활비", "#0ea5e9"), ("월_양육비_만", "양육비", "#10b981"), ("월_원리금_만", "대출상환", "#f59e0b"),
                    ("월_보유세_만", "보유세", "#ef4444"), ("월_근로소득세_만", "근로소득/4대보험", "#8b5cf6"), ("월_배당연금세_만", "배당/연금세", "#d946ef"), ("월_이벤트_만", "이벤트", "#ec4899")]
     
-    in_items_y = [("연_남편소득_만", "남편소득", "#3b82f6"), ("연_아내소득_만", "아내소득", "#ec4899"), ("연_배당_만", "배당소득", "#f59e0b"), ("연_연금_만", "공적연금", "#10b981")]
+    in_items_y = [("연_남편소득_만", "남편소득", "#3b82f6"), ("연_아내소득_만", "아내소득", "#ec4899"), ("연_정부지원_만", "국가지원/실업급여", "#06b6d4"), ("연_배당_만", "배당(수입)", "#f59e0b"), ("연_연금_만", "공적연금", "#10b981")]
     out_items_y = [("연_생활비_만", "생활비", "#0ea5e9"), ("연_양육비_만", "양육비", "#10b981"), ("연_원리금_만", "대출상환", "#f59e0b"),
                    ("연_보유세_만", "보유세", "#ef4444"), ("연_근로소득세_만", "근로소득/4대보험", "#8b5cf6"), ("연_배당연금세_만", "배당/연금세", "#d946ef"), ("연_이벤트_만", "이벤트", "#ec4899")]
 
     st.markdown("#### 🌊 월간 현금흐름 분석 (수입 vs 지출 vs FCF)")
-    st.info("💡 **FCF(잉여현금흐름)란?** 총 수입에서 모든 지출(생활비, 대출원리금, 세금 등)을 빼고 남은 '순수 여윳돈'입니다. 적자(-)가 발생할 경우 **보유 중인 금융자산(주식 등)을 1순위로 매각하여 자동으로 부족한 생활비를 충당**하도록 설계되었습니다.", icon="💵")
+    st.info("💡 **FCF(잉여현금흐름)란?** 총 수입에서 모든 지출을 빼고 남은 '순수 여윳돈'입니다. 적자(-)가 발생할 경우 **보유 중인 금융자산(주식 등)을 1순위로 매각하여 자동으로 부족한 생활비를 충당**하도록 설계되었습니다.", icon="💵")
     
     cm1, cm2, cm3 = st.columns(3)
     cm1.plotly_chart(draw_stacked_bar(sub, in_items_m, "📥 월 유입 현금(만)", "월_총수입_만"), use_container_width=True)
@@ -628,7 +693,7 @@ with m_tab:
     cy3.plotly_chart(draw_fcf_bar(sub, "연_FCF_만", "💵 연 잉여현금(FCF)"), use_container_width=True)
 
 with t_tab:
-    st.info("💡 **세무 시뮬레이션 가정 사항**\n* **근로소득세 및 4대보험:** 매년 대한민국의 **8단계 누진세율(6%~45%)**과 4대보험(약 9%) 요율을 적용하여 정밀하게 원천징수액을 산출합니다.\n* **취득세:** 갈아타기 주택 매수가의 3.3% 일괄 적용\n* **양도세:** 기존 주택 시세 차익의 20% 일괄 적용\n* **금융소득세:** 배당금 발생액의 15.4%를 자동 차감합니다.", icon="ℹ️")
+    st.info("💡 **세무 시뮬레이션 가정 사항**\n* **근로소득세 및 4대보험:** 매년 대한민국의 **8단계 누진세율(6%~45%)**과 4대보험(약 9%) 요율을 적용하여 산출합니다.\n* **자녀 세액공제:** 8세~20세 자녀 1명당 15만, 2명 30만, 3명 60만원의 세금을 자동 공제합니다.\n* **취득/양도세:** 주택 갈아타기 시 각각 3.3%, 20%를 적용합니다.\n* **금융소득세:** 배당금 발생액의 15.4%를 자동 차감합니다.", icon="ℹ️")
     st.header("⚖️ 상세 세무 분석 테이블 (단위: 만원)")
     t_disp = df_res[["연도", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만", "이벤트"]].copy()
     for col in ["보유세_만", "금융소득세_만", "양도세_만", "취득세_만"]: t_disp[col] = t_disp[col].apply(lambda x: f"{x:,.0f}")
@@ -709,11 +774,12 @@ with d_tab:
 # --- 7. 사용자 데이터 자동 저장 로직 ---
 static_keys = [
     'sys_start_yr', 'sys_end_yr', 'h_birth_yr', 'w_birth_yr', 
-    'h_s_in', 'h_br_in', 'h_i_in', 'h_promo_yr', 'h_promo_r', 'h_ret_in', 'h_sev_in', 'h_p_in', 
-    'w_s_in', 'w_br_in', 'w_inc_in', 'w_promo_yr', 'w_promo_r', 'w_r_in', 'w_sev_in', 'w_p_in', 
+    'h_s_in', 'h_br_in', 'h_i_in', 'h_promo_yr', 'h_promo_r', 'h_ret_in', 'h_sev_in', 'h_p_in', 'h_side_in', 'h_side_end',
+    'w_s_in', 'w_br_in', 'w_inc_in', 'w_promo_yr', 'w_promo_r', 'w_r_in', 'w_sev_in', 'w_p_in', 'w_side_in', 'w_side_end',
     'liv_m_in', 'liv_g_in', 'inv_ini_in', 'inv_gr_in', 'inv_rat_in', 
     'debt_ini_in', 'debt_r_in', 'debt_t_in', 'debt_tp_in', 're_ini_in', 're_gr_in', 
-    'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq'
+    'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq',
+    'h_leave_yr', 'h_leave_mos', 'h_leave_pay', 'w_leave_yr', 'w_leave_mos', 'w_leave_pay', 'h_unemp', 'w_unemp'
 ]
 
 if st.session_state.get('current_user'):
