@@ -11,7 +11,7 @@ FIREBASE_URL = "https://familiy-financial-plan-default-rtdb.asia-southeast1.fire
 
 st.set_page_config(page_title="우리 가족 자산 마스터 (Ultimate Ver.)", layout="wide")
 
-# 🌟 디자인 롤백: 연한 하늘색 배경 + 검은색 글씨
+# 🌟 디자인 유지: 연한 하늘색 배경 + 검은색 굵은 글씨
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
@@ -102,7 +102,7 @@ if 'w_leaves' not in st.session_state: st.session_state.w_leaves = []
 st.sidebar.success(f"🟢 **{user_id}** 계정 접속됨")
 st.sidebar.markdown("---")
 
-st.title("💎 우리 가족 통합 자산 프로젝션 v19.0")
+st.title("💎 우리 가족 통합 자산 프로젝션 v19.1")
 st.markdown("---")
 
 st.sidebar.title("🛠️ 재무 전략 설정")
@@ -115,7 +115,7 @@ with st.sidebar.expander("📅 시나리오 및 기본 설정", expanded=True):
     h_birth_yr = c3.number_input("남편 출생년도", value=st.session_state.get('h_birth_yr', 1995), key="h_birth_yr")
     w_birth_yr = c4.number_input("아내 출생년도", value=st.session_state.get('w_birth_yr', 1994), key="w_birth_yr")
 
-# 🌟 설명 툴팁을 담은 도움말 텍스트 정의
+# 🌟 설명 툴팁 유지
 pension_help_text = "은퇴 직후부터 평생 매월 수령할 '개인연금(연금저축펀드, 보험 등)' 및 '퇴직연금(IRP 등)'의 합산 금액을 세전 기준으로 입력하세요. 엔진이 매년 5.5%의 연금소득세를 자동으로 떼고 현금흐름에 반영합니다."
 
 with st.sidebar.expander("👤 남편 소득(세전) 및 휴직/은퇴", expanded=False):
@@ -175,7 +175,7 @@ with st.sidebar.expander("👩 아내 소득(세전) 및 휴직/은퇴", expande
         c1, c2, c3, c4 = st.columns([3, 2, 3, 2])
         lv['year'] = c1.number_input(f"휴직연도 {i}", start_yr, end_yr, lv.get('year', start_yr+1), key=f"wl_y_{i}")
         lv['mos'] = c2.number_input(f"기간(월) {i}", 1, 12, lv.get('mos', 12), key=f"wl_m_{i}")
-        lv['pay'] = c3.number_input(f"급여(만) {i}", value=lv.get('pay', 150), key=f"wl_p_{i}")
+        lv['pay'] = c3.number_input(f"월급여(만) {i}", value=lv.get('pay', 150), key=f"wl_p_{i}")
         if c4.button("삭제", key=f"wl_del_{i}"): st.session_state.w_leaves.pop(i); st.rerun()
     
     st.markdown("---")
@@ -253,7 +253,7 @@ with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
         
         temp_price = tr['new_price']
         temp_yr = tr['year']
-        if st.button(f"🗑️ 삭제", key=f"re_del_{i}"): st.session_state.re_trades.pop(i); st.rerun()
+        if st.button(f"🗑️ 삭제 {i}", key=f"re_del_{i}"): st.session_state.re_trades.pop(i); st.rerun()
 
 with st.sidebar.expander("🍼 자녀 & 일반 이벤트 (증여 포함)", expanded=False):
     if st.button("➕ 자녀 추가"): 
@@ -289,9 +289,11 @@ with st.sidebar.expander("🍼 자녀 & 일반 이벤트 (증여 포함)", expan
 with st.sidebar.expander("👵 은퇴 시점 리밸런싱 & 배당", expanded=False):
     st.markdown("**1️⃣ 주택 연금화 (다운사이징)**")
     ret_re_down_ratio = st.slider("최종 은퇴 시 부동산 매각 비율(%)", 0, 100, st.session_state.get('ret_down_r', 30), step=10, key="ret_down_r")
+    st.caption("매각 대금은 양도세 정산 후 전액 금융자산으로 즉시 편입됩니다.")
     st.markdown("---")
     st.markdown("**2️⃣ 은퇴 시점 부채 상환**")
     ret_debt_payoff_ratio = st.slider("은퇴 시 부채 상환 비율(%)", 0, 100, st.session_state.get('ret_debt_r', 100), step=10, key="ret_debt_r")
+    st.caption("상환 자금은 총 금융자산 내에서 우선 차감됩니다.")
     st.markdown("---")
     st.markdown("**3️⃣ 은퇴 후 금융자산 배분**")
     s_schd = st.slider("SCHD (배당성장) %", 0, 100, st.session_state.get('ret_schd', 25), key="ret_schd")
@@ -555,7 +557,6 @@ def run_simulation():
         discount_factor = (1 + living_gr) ** max(0, year - start_yr) if is_pv_mode else 1.0
         event_str_tooltip = "<br>".join(ev_list) if ev_list else "이슈 없음"
         
-        # 🌟 에러 완벽 차단: UI에서 부르는 모든 키가 딕셔너리에 정확히 들어가도록 추가
         res.append({
             "연도": year, 
             "순자산_억": round(((c_re + c_inv + c_cash - c_debt)/discount_factor)/10000, 2),
@@ -571,7 +572,7 @@ def run_simulation():
             "연_근로소득세_만": round(tax_earned/discount_factor, 0), "연_배당연금세_만": round(tax_dividend_pension/discount_factor, 0), 
             "연_이벤트_만": round(ev_cost/discount_factor, 0), "연_의료비_만": round(health_shock_y/discount_factor, 0),
             "연_총수입_만": round(total_income_y/discount_factor, 0), "연_총지출_만": round(total_exp_y/discount_factor, 0), "연_FCF_만": round(net_flow_y/discount_factor, 0),
-            "연_배당연금_만": round((div_income_y + pension + personal_pension_y)/discount_factor, 0), # 신규 추가
+            "연_배당연금_만": round((div_income_y + pension + personal_pension_y)/discount_factor, 0), 
             
             "월_남편소득_만": round((inc_h/12)/discount_factor, 0), "월_아내소득_만": round((inc_w/12)/discount_factor, 0),
             "월_배당_만": round((div_income_y/12)/discount_factor, 0), "월_연금_만": round(((pension+personal_pension_y)/12)/discount_factor, 0),
@@ -581,7 +582,7 @@ def run_simulation():
             "월_근로소득세_만": round((tax_earned/12)/discount_factor, 0), "월_배당연금세_만": round((tax_dividend_pension/12)/discount_factor, 0), 
             "월_이벤트_만": round((ev_cost/12)/discount_factor, 0), "월_의료비_만": round((health_shock_y/12)/discount_factor, 0),
             "월_총수입_만": round((total_income_y/12)/discount_factor, 0), "월_총지출_만": round((total_exp_y/12)/discount_factor, 0), "월_FCF_만": round((net_flow_y/12)/discount_factor, 0),
-            "월_배당연금_만": round(((div_income_y + pension + personal_pension_y)/12)/discount_factor, 0), # 🌟 에러 수정 (핵심)
+            "월_배당연금_만": round(((div_income_y + pension + personal_pension_y)/12)/discount_factor, 0),
             
             "총수입_만": round(total_income_y/discount_factor, 0), "월_순현금_만": round((net_flow_y/12)/discount_factor, 0), "월_지출_만": round((total_exp_y/12)/discount_factor, 0),
             "보유세_만": round((t_hold + t_comp)/discount_factor, 0), "금융소득세_만": round(t_fin_tax/discount_factor, 0),
@@ -589,6 +590,10 @@ def run_simulation():
             "이벤트": event_str_tooltip,
             "net_flow_raw": net_flow_y
         })
+        
+        # 🌟 급여 인상률 반영 (이전 에러 해결 부위)
+        c_h_sal *= (1 + h_inc)
+        c_w_sal *= (1 + w_inc)
         
     return pd.DataFrame(res)
 
@@ -771,7 +776,7 @@ with d_tab:
 
 st.markdown("---")
 
-# --- 🌟 V19 신규 기능 하단 배치 (FIRE 계기판 & AI 리포트) ---
+# --- 🌟 6. V19 신규 기능 하단 배치 (FIRE 계기판 & AI 리포트) ---
 def render_fire_gauge(df):
     ret_start_yr = max(h_birth_yr + 55, w_birth_yr + 55) 
     ret_df = df[df["연도"] >= ret_start_yr]
