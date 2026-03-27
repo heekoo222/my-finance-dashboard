@@ -78,6 +78,9 @@ if 'current_user' not in st.session_state or st.session_state.current_user != us
     st.session_state.re_trades = user_data.get('re_trades', [])
     st.session_state.events = user_data.get('events', [])
     st.session_state.kids = user_data.get('kids', [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}])
+    # 신규: 육아휴직 다중 리스트 초기화
+    st.session_state.h_leaves = user_data.get('h_leaves', [])
+    st.session_state.w_leaves = user_data.get('w_leaves', [])
     
     static_keys = [
         'sys_start_yr', 'sys_end_yr', 'h_birth_yr', 'w_birth_yr', 
@@ -85,8 +88,7 @@ if 'current_user' not in st.session_state or st.session_state.current_user != us
         'w_s_in', 'w_br_in', 'w_inc_in', 'w_promo_yr', 'w_promo_r', 'w_r_in', 'w_sev_in', 'w_p_in', 'w_side_in', 'w_side_end',
         'liv_m_in', 'liv_g_in', 'inv_ini_in', 'inv_gr_in', 'inv_rat_in', 
         'debt_ini_in', 'debt_r_in', 'debt_t_in', 'debt_tp_in', 're_ini_in', 're_gr_in', 
-        'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq',
-        'h_leave_yr', 'h_leave_mos', 'h_leave_pay', 'w_leave_yr', 'w_leave_mos', 'w_leave_pay', 'h_unemp', 'w_unemp'
+        'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq', 'h_unemp', 'w_unemp'
     ]
     for k in static_keys:
         if k in user_data:
@@ -111,6 +113,7 @@ with st.sidebar.expander("📅 시나리오 및 기본 설정", expanded=True):
 
 with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expanded=True):
     h_tab, w_tab = st.tabs([f"남편({str(h_birth_yr)[-2:]})", f"아내({str(w_birth_yr)[-2:]})"])
+    
     with h_tab:
         h_sal = st.number_input("남편 월급(세전, 만)", value=st.session_state.get('h_s_in', 830), key="h_s_in")
         h_bonus_r = st.number_input("남편 상여비율(%)", value=st.session_state.get('h_br_in', 20.0), key="h_br_in") / 100
@@ -121,12 +124,18 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expande
         h_promo_yr = c1.number_input("승진 예상 연도", value=st.session_state.get('h_promo_yr', start_yr+4), min_value=start_yr, key="h_promo_yr")
         h_promo_r = c2.number_input("승진 인상률(%)", value=st.session_state.get('h_promo_r', 15.0), key="h_promo_r") / 100
         
-        # 🌟 신규: 육아휴직 설정
+        # 🌟 개선: 남편 육아휴직 무제한 추가/삭제
         st.markdown("**👶 육아휴직 계획**")
-        col1, col2, col3 = st.columns(3)
-        h_leave_yr = col1.number_input("휴직 연도", value=st.session_state.get('h_leave_yr', start_yr+1), key="h_leave_yr")
-        h_leave_mos = col2.number_input("기간(개월)", value=st.session_state.get('h_leave_mos', 0), max_value=12, key="h_leave_mos")
-        h_leave_pay = col3.number_input("월 급여(만)", value=st.session_state.get('h_leave_pay', 150), key="h_leave_pay")
+        if st.button("➕ 남편 육아휴직 추가", key="add_h_leave"):
+            st.session_state.h_leaves.append({"year": start_yr+1, "mos": 6, "pay": 150})
+        for i, lv in enumerate(st.session_state.h_leaves):
+            c1, c2, c3, c4 = st.columns([3, 2, 3, 2])
+            lv['year'] = c1.number_input(f"휴직 연도{i}", start_yr, end_yr, lv.get('year', start_yr+1), key=f"hl_y_{i}")
+            lv['mos'] = c2.number_input(f"기간(월){i}", 1, 12, lv.get('mos', 6), key=f"hl_m_{i}")
+            lv['pay'] = c3.number_input(f"월급여(만){i}", value=lv.get('pay', 150), key=f"hl_p_{i}")
+            if c4.button("삭제", key=f"hl_del_{i}"):
+                st.session_state.h_leaves.pop(i)
+                st.rerun()
         
         st.markdown("---")
         h_ages = list(range(40, 81))
@@ -138,7 +147,6 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expande
         h_ret_age = h_ages[h_opts.index(h_ret_sel)]
         h_sev_pay = st.number_input("예상 퇴직금(만)", value=st.session_state.get('h_sev_in', 10000), step=1000, key="h_sev_in")
         
-        # 🌟 신규: 실업급여 체크박스
         h_unemp = st.checkbox("은퇴 첫해 실업급여 수령 (9개월, 약 1,780만 원)", value=st.session_state.get('h_unemp', True), key="h_unemp")
         
         st.markdown("**🌱 은퇴 후 현금흐름**")
@@ -157,12 +165,18 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expande
         w_promo_yr = c1.number_input("승진 예상 연도 ", value=st.session_state.get('w_promo_yr', start_yr+3), min_value=start_yr, key="w_promo_yr")
         w_promo_r = c2.number_input("승진 인상률(%) ", value=st.session_state.get('w_promo_r', 15.0), key="w_promo_r") / 100
         
-        # 🌟 신규: 육아휴직 설정
+        # 🌟 개선: 아내 육아휴직 무제한 추가/삭제
         st.markdown("**👶 육아휴직 계획**")
-        col1, col2, col3 = st.columns(3)
-        w_leave_yr = col1.number_input("휴직 연도 ", value=st.session_state.get('w_leave_yr', start_yr+1), key="w_leave_yr")
-        w_leave_mos = col2.number_input("기간(개월) ", value=st.session_state.get('w_leave_mos', 12), max_value=12, key="w_leave_mos")
-        w_leave_pay = col3.number_input("월 급여(만) ", value=st.session_state.get('w_leave_pay', 150), key="w_leave_pay")
+        if st.button("➕ 아내 육아휴직 추가", key="add_w_leave"):
+            st.session_state.w_leaves.append({"year": start_yr+1, "mos": 12, "pay": 150})
+        for i, lv in enumerate(st.session_state.w_leaves):
+            c1, c2, c3, c4 = st.columns([3, 2, 3, 2])
+            lv['year'] = c1.number_input(f"휴직 연도 {i}", start_yr, end_yr, lv.get('year', start_yr+1), key=f"wl_y_{i}")
+            lv['mos'] = c2.number_input(f"기간(월) {i}", 1, 12, lv.get('mos', 12), key=f"wl_m_{i}")
+            lv['pay'] = c3.number_input(f"월급여(만) {i}", value=lv.get('pay', 150), key=f"wl_p_{i}")
+            if c4.button("삭제", key=f"wl_del_{i}"):
+                st.session_state.w_leaves.pop(i)
+                st.rerun()
         
         st.markdown("---")
         w_ages = list(range(40, 81))
@@ -174,7 +188,6 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expande
         w_ret_age = w_ages[w_opts.index(w_ret_sel)]
         w_sev_pay = st.number_input("예상 퇴직금(만) ", value=st.session_state.get('w_sev_in', 8000), step=1000, key="w_sev_in")
         
-        # 🌟 신규: 실업급여 체크박스
         w_unemp = st.checkbox("은퇴 첫해 실업급여 수령 (9개월, 약 1,780만 원) ", value=st.session_state.get('w_unemp', True), key="w_unemp")
         
         st.markdown("**🌱 은퇴 후 현금흐름**")
@@ -322,18 +335,24 @@ def run_simulation():
             c_w_sal *= (1 + w_promo_r)
             ev_list.append(f"🎉아내 승진({w_promo_r*100:.0f}% 인상)")
         
-        # 🌟 개선: 육아휴직 및 소일거리 로직
+        # 🌟 개선: 육아휴직 다중 처리 로직
         h_work_mos, h_leave_inc = 12, 0
-        if year == h_leave_yr and h_leave_mos > 0:
-            h_work_mos = max(0, 12 - h_leave_mos)
-            h_leave_inc = h_leave_pay * h_leave_mos
-            ev_list.append(f"👨‍🍼남편 육아휴직({h_leave_mos}개월)")
+        h_leave_mos_total = 0
+        for lv in st.session_state.h_leaves:
+            if year == lv['year']:
+                h_leave_mos_total += lv['mos']
+                h_leave_inc += lv['pay'] * lv['mos']
+                ev_list.append(f"👨‍🍼남편 육아휴직({lv['mos']}개월)")
+        h_work_mos = max(0, 12 - h_leave_mos_total)
             
         w_work_mos, w_leave_inc = 12, 0
-        if year == w_leave_yr and w_leave_mos > 0:
-            w_work_mos = max(0, 12 - w_leave_mos)
-            w_leave_inc = w_leave_pay * w_leave_mos
-            ev_list.append(f"👩‍🍼아내 육아휴직({w_leave_mos}개월)")
+        w_leave_mos_total = 0
+        for lv in st.session_state.w_leaves:
+            if year == lv['year']:
+                w_leave_mos_total += lv['mos']
+                w_leave_inc += lv['pay'] * lv['mos']
+                ev_list.append(f"👩‍🍼아내 육아휴직({lv['mos']}개월)")
+        w_work_mos = max(0, 12 - w_leave_mos_total)
         
         if h_age <= h_ret_age: inc_h = (c_h_sal * h_work_mos * (1+h_bonus_r)) + h_leave_inc
         elif h_age <= h_side_end: inc_h = (h_side_in * 12)
@@ -356,19 +375,15 @@ def run_simulation():
             
         div_income_y = c_inv * blended_yield
         
-        # 🌟 개선: 국가 양육 지원금 산출 (부모급여 + 아동수당) & 자녀세액공제 인원 산출
         gov_support_y = 0
         tax_credit_kids = 0
         k_total = 0
         for kid in st.session_state.kids:
             ka = year - kid['birth']
+            if ka == 0: gov_support_y += 110 * 12
+            elif ka == 1: gov_support_y += 60 * 12
+            elif 2 <= ka <= 7: gov_support_y += 10 * 12
             
-            # 국가지원금 계산
-            if ka == 0: gov_support_y += 110 * 12  # 부모급여 100 + 아동수당 10
-            elif ka == 1: gov_support_y += 60 * 12 # 부모급여 50 + 아동수당 10
-            elif 2 <= ka <= 7: gov_support_y += 10 * 12 # 아동수당 10
-            
-            # 자녀세액공제 대상자 카운트 (8세~20세)
             if 8 <= ka <= 20: tax_credit_kids += 1
             
             sch_stage = ""
@@ -387,16 +402,15 @@ def run_simulation():
             if sch_stage: ev_list.append(sch_stage)
             if year == kid['birth']: ev_list.append(f"🍼{kid['name']} 탄생")
             
-        # 🌟 개선: 은퇴 실업급여 처리 (9개월 수령 가정)
         if year == h_ret_year:
             c_inv += h_sev_pay
-            if h_unemp: 
+            if st.session_state.get('h_unemp', True): 
                 unemp_income_y += 198 * 9
                 ev_list.append("💼남편 실업급여 수령")
             ev_list.append(f"👨‍🦳남편 은퇴(퇴직금 {h_sev_pay//10000}억)")
         if year == w_ret_year:
             c_inv += w_sev_pay
-            if w_unemp: 
+            if st.session_state.get('w_unemp', True): 
                 unemp_income_y += 198 * 9
                 ev_list.append("💼아내 실업급여 수령")
             ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억)")
@@ -473,7 +487,6 @@ def run_simulation():
         tax_h = get_annual_tax_and_insurance(inc_h)
         tax_w = get_annual_tax_and_insurance(inc_w)
         
-        # 🌟 개선: 자녀 세액공제 적용 (소득세에서 차감)
         child_tax_credit = 0
         if tax_credit_kids == 1: child_tax_credit = 15
         elif tax_credit_kids == 2: child_tax_credit = 30
@@ -517,6 +530,7 @@ def run_simulation():
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
         
+        # 🌟 FCF 적자 발생 시 자산 매각/대출 증가 로직 (완벽 적용됨)
         if net_flow_y >= 0:
             c_inv += net_flow_y * (inv_ratio / 100)
             c_cash += net_flow_y * (1 - inv_ratio/100)
@@ -544,7 +558,7 @@ def run_simulation():
             
             "연_남편소득_만": round(inc_h, 0), "연_아내소득_만": round(inc_w, 0),
             "연_배당_만": round(div_income_y, 0), "연_연금_만": round(pension, 0),
-            "연_정부지원_만": round(gov_support_y + unemp_income_y, 0), # 신규 수입
+            "연_정부지원_만": round(gov_support_y + unemp_income_y, 0), 
             "연_생활비_만": round(curr_living_y, 0), "연_양육비_만": round(k_total, 0),
             "연_원리금_만": round(repay_a, 0), "연_보유세_만": round(t_hold + t_comp, 0),
             "연_근로소득세_만": round(tax_earned, 0), "연_배당연금세_만": round(tax_dividend_pension, 0), "연_이벤트_만": round(ev_cost, 0),
@@ -552,7 +566,7 @@ def run_simulation():
             
             "월_남편소득_만": round(inc_h / 12, 0), "월_아내소득_만": round(inc_w / 12, 0),
             "월_배당_만": round(div_income_y / 12, 0), "월_연금_만": round(pension / 12, 0),
-            "월_정부지원_만": round((gov_support_y + unemp_income_y) / 12, 0), # 신규 수입
+            "월_정부지원_만": round((gov_support_y + unemp_income_y) / 12, 0), 
             "월_생활비_만": round(curr_living_y / 12, 0), "월_양육비_만": round(k_total / 12, 0),
             "월_원리금_만": round(repay_a / 12, 0), "월_보유세_만": round((t_hold + t_comp) / 12, 0),
             "월_근로소득세_만": round(tax_earned / 12, 0), "월_배당연금세_만": round(tax_dividend_pension / 12, 0), "월_이벤트_만": round(ev_cost / 12, 0),
@@ -778,8 +792,7 @@ static_keys = [
     'w_s_in', 'w_br_in', 'w_inc_in', 'w_promo_yr', 'w_promo_r', 'w_r_in', 'w_sev_in', 'w_p_in', 'w_side_in', 'w_side_end',
     'liv_m_in', 'liv_g_in', 'inv_ini_in', 'inv_gr_in', 'inv_rat_in', 
     'debt_ini_in', 'debt_r_in', 'debt_t_in', 'debt_tp_in', 're_ini_in', 're_gr_in', 
-    'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq',
-    'h_leave_yr', 'h_leave_mos', 'h_leave_pay', 'w_leave_yr', 'w_leave_mos', 'w_leave_pay', 'h_unemp', 'w_unemp'
+    'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq', 'h_unemp', 'w_unemp'
 ]
 
 if st.session_state.get('current_user'):
@@ -791,6 +804,8 @@ if st.session_state.get('current_user'):
     user_data['re_trades'] = st.session_state.get('re_trades', [])
     user_data['events'] = st.session_state.get('events', [])
     user_data['kids'] = st.session_state.get('kids', [])
+    user_data['h_leaves'] = st.session_state.get('h_leaves', [])
+    user_data['w_leaves'] = st.session_state.get('w_leaves', [])
 
     db[st.session_state.current_user] = user_data
     save_cloud_db(db)
