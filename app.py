@@ -71,16 +71,11 @@ if not user_id:
     st.info("👈 **왼쪽 사이드바에 '아이디'를 입력해주세요.**\n\n(아무 아이디나 입력하시면 즉시 나만의 전용 클라우드 데이터베이스가 생성됩니다. 다른 기기에서도 해당 아이디만 입력하면 데이터를 그대로 불러옵니다!)", icon="🚀")
     st.stop()
 
+# 🌟 업데이트: 로그인 세션 바인딩 및 에러 원천 차단 안전장치
+user_data = db.get(user_id, {})
+
 if 'current_user' not in st.session_state or st.session_state.current_user != user_id:
     st.session_state.current_user = user_id
-    user_data = db.get(user_id, {})
-    
-    st.session_state.re_trades = user_data.get('re_trades', [])
-    st.session_state.events = user_data.get('events', [])
-    st.session_state.kids = user_data.get('kids', [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}])
-    # 신규: 육아휴직 다중 리스트 초기화
-    st.session_state.h_leaves = user_data.get('h_leaves', [])
-    st.session_state.w_leaves = user_data.get('w_leaves', [])
     
     static_keys = [
         'sys_start_yr', 'sys_end_yr', 'h_birth_yr', 'w_birth_yr', 
@@ -93,6 +88,14 @@ if 'current_user' not in st.session_state or st.session_state.current_user != us
     for k in static_keys:
         if k in user_data:
             st.session_state[k] = user_data[k]
+
+# 이미 로그인된 상태라도 리스트형 데이터가 없으면 무조건 생성해주는 안전장치
+if 're_trades' not in st.session_state: st.session_state.re_trades = user_data.get('re_trades', [])
+if 'events' not in st.session_state: st.session_state.events = user_data.get('events', [])
+if 'kids' not in st.session_state: st.session_state.kids = user_data.get('kids', [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}])
+if 'h_leaves' not in st.session_state: st.session_state.h_leaves = user_data.get('h_leaves', [])
+if 'w_leaves' not in st.session_state: st.session_state.w_leaves = user_data.get('w_leaves', [])
+
 
 st.sidebar.success(f"🟢 **{user_id}** 계정 접속됨 (클라우드 실시간 저장 중)")
 st.sidebar.markdown("---")
@@ -124,7 +127,6 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expande
         h_promo_yr = c1.number_input("승진 예상 연도", value=st.session_state.get('h_promo_yr', start_yr+4), min_value=start_yr, key="h_promo_yr")
         h_promo_r = c2.number_input("승진 인상률(%)", value=st.session_state.get('h_promo_r', 15.0), key="h_promo_r") / 100
         
-        # 🌟 개선: 남편 육아휴직 무제한 추가/삭제
         st.markdown("**👶 육아휴직 계획**")
         if st.button("➕ 남편 육아휴직 추가", key="add_h_leave"):
             st.session_state.h_leaves.append({"year": start_yr+1, "mos": 6, "pay": 150})
@@ -165,7 +167,6 @@ with st.sidebar.expander("👤 부부 소득(세전) 및 휴직/은퇴", expande
         w_promo_yr = c1.number_input("승진 예상 연도 ", value=st.session_state.get('w_promo_yr', start_yr+3), min_value=start_yr, key="w_promo_yr")
         w_promo_r = c2.number_input("승진 인상률(%) ", value=st.session_state.get('w_promo_r', 15.0), key="w_promo_r") / 100
         
-        # 🌟 개선: 아내 육아휴직 무제한 추가/삭제
         st.markdown("**👶 육아휴직 계획**")
         if st.button("➕ 아내 육아휴직 추가", key="add_w_leave"):
             st.session_state.w_leaves.append({"year": start_yr+1, "mos": 12, "pay": 150})
@@ -335,7 +336,6 @@ def run_simulation():
             c_w_sal *= (1 + w_promo_r)
             ev_list.append(f"🎉아내 승진({w_promo_r*100:.0f}% 인상)")
         
-        # 🌟 개선: 육아휴직 다중 처리 로직
         h_work_mos, h_leave_inc = 12, 0
         h_leave_mos_total = 0
         for lv in st.session_state.h_leaves:
@@ -530,7 +530,6 @@ def run_simulation():
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
         
-        # 🌟 FCF 적자 발생 시 자산 매각/대출 증가 로직 (완벽 적용됨)
         if net_flow_y >= 0:
             c_inv += net_flow_y * (inv_ratio / 100)
             c_cash += net_flow_y * (1 - inv_ratio/100)
