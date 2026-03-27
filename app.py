@@ -2,83 +2,94 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import json
-import os
+import urllib.request
 
-# --- 데이터 저장 파일명 설정 ---
-DATA_FILE = "family_finance_data.json"
+# =====================================================================
+# ☁️ 회원님의 전용 클라우드 DB 주소 (자동 연동 완료!)
+# =====================================================================
+FIREBASE_URL = "https://familiy-financial-plan-default-rtdb.asia-southeast1.firebasedatabase.app/finance_db.json"
 
 # 1. 페이지 설정 및 프리미엄 디자인 UI/UX
-st.set_page_config(page_title="우리 가족 자산 마스터 v16.0", layout="wide")
+st.set_page_config(page_title="우리 가족 자산 마스터 (Cloud Ver.)", layout="wide")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
     
-    html, body, [class*="css"] { 
-        font-family: 'Noto Sans KR', sans-serif; 
-        font-size: 20px !important; 
-    }
-    
-    section[data-testid="stSidebar"] {
-        background-color: #e0f2fe !important;
-        border-right: 1px solid #bae6fd;
-    }
-    section[data-testid="stSidebar"] .stMarkdown p, 
-    section[data-testid="stSidebar"] label,
-    section[data-testid="stSidebar"] .stHeader,
-    section[data-testid="stSidebar"] .stSelectbox label {
-        color: #000000 !important;
-        font-weight: 700 !important;
-    }
-
-    div[data-testid="stMetric"] {
-        background-color: #ffffff; padding: 25px !important; border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 6px solid #0ea5e9;
-    }
-    .stTabs [data-baseweb="tab"] {
-        font-size: 22px !important; font-weight: 700; padding: 12px 30px;
-    }
-    .stButton>button {
-        width: 100%; border-radius: 12px; font-weight: 700; background-color: #0ea5e9; color: white; height: 3.5rem;
-    }
-    /* Streamlit 네이티브 데이터프레임 헤더 스타일링 */
-    [data-testid="stDataFrame"] {
-        font-family: 'Noto Sans KR', sans-serif;
-    }
+    html, body, [class*="css"] { font-family: 'Noto Sans KR', sans-serif; font-size: 20px !important; }
+    section[data-testid="stSidebar"] { background-color: #e0f2fe !important; border-right: 1px solid #bae6fd; }
+    section[data-testid="stSidebar"] .stMarkdown p, section[data-testid="stSidebar"] label,
+    section[data-testid="stSidebar"] .stHeader, section[data-testid="stSidebar"] .stSelectbox label { color: #000000 !important; font-weight: 700 !important; }
+    div[data-testid="stMetric"] { background-color: #ffffff; padding: 25px !important; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-top: 6px solid #0ea5e9; }
+    .stTabs [data-baseweb="tab"] { font-size: 22px !important; font-weight: 700; padding: 12px 30px; }
+    .stButton>button { width: 100%; border-radius: 12px; font-weight: 700; background-color: #0ea5e9; color: white; height: 3.5rem; }
+    [data-testid="stDataFrame"] { font-family: 'Noto Sans KR', sans-serif; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. 데이터 유지 및 자동 불러오기 로직 ---
-if 'data_loaded' not in st.session_state:
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                saved_data = json.load(f)
-            for k, v in saved_data.items():
-                st.session_state[k] = v
-        except Exception:
-            pass 
-    st.session_state.data_loaded = True
+# --- 2. 클라우드 데이터 통신 함수 ---
+def load_cloud_db():
+    try:
+        req = urllib.request.Request(FIREBASE_URL)
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
+            return data if data else {}
+    except Exception:
+        return {}
 
-if 're_trades' not in st.session_state: st.session_state.re_trades = []
-if 'events' not in st.session_state: st.session_state.events = []
-if 'kids' not in st.session_state:
-    st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}]
+def save_cloud_db(db_data):
+    try:
+        req = urllib.request.Request(FIREBASE_URL, data=json.dumps(db_data).encode('utf-8'), method='PUT')
+        req.add_header('Content-Type', 'application/json')
+        urllib.request.urlopen(req)
+    except Exception as e:
+        st.sidebar.error("클라우드 저장 실패! 인터넷 연결을 확인해주세요.")
 
-# --- 3. 사이드바: 설정 레버 ---
+# --- 3. 클라우드 계정 로그인 UI ---
+db = load_cloud_db()
+
+st.sidebar.title("☁️ 클라우드 계정 연동")
+user_id = st.sidebar.text_input("아이디를 입력하세요 (예: ethan123)", key="login_id")
+
+if not user_id:
+    st.markdown(f"<h1 style='text-align: center; margin-top: 100px;'>👨‍👩‍👧‍👦 우리 가족 자산 마스터 (Cloud Ver.)</h1>", unsafe_allow_html=True)
+    st.info("👈 **왼쪽 사이드바에 '아이디'를 입력해주세요.**\n\n(아무 아이디나 입력하시면 즉시 나만의 전용 클라우드 데이터베이스가 생성됩니다. 다른 기기에서도 해당 아이디만 입력하면 데이터를 그대로 불러옵니다!)", icon="🚀")
+    st.stop()
+
+# 유저 데이터 바인딩 로직
+if 'current_user' not in st.session_state or st.session_state.current_user != user_id:
+    st.session_state.current_user = user_id
+    user_data = db.get(user_id, {})
+    
+    st.session_state.re_trades = user_data.get('re_trades', [])
+    st.session_state.events = user_data.get('events', [])
+    st.session_state.kids = user_data.get('kids', [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}])
+    
+    static_keys = ['sys_start_yr', 'sys_end_yr', 'h_s_in', 'h_br_in', 'h_i_in', 'h_ret_in', 'h_sev_in', 'h_p_in', 'w_s_in', 'w_br_in', 'w_inc_in', 'w_r_in', 'w_sev_in', 'w_p_in', 'liv_m_in', 'liv_g_in', 'inv_ini_in', 'inv_gr_in', 'inv_rat_in', 'debt_ini_in', 'debt_r_in', 'debt_t_in', 'debt_tp_in', 're_ini_in', 're_gr_in', 'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq']
+    for k in static_keys:
+        if k in user_data:
+            st.session_state[k] = user_data[k]
+
+st.sidebar.success(f"🟢 **{user_id}** 계정 접속됨 (클라우드 실시간 저장 중)")
+st.sidebar.markdown("---")
+
+st.title("👨‍👩‍👧‍👦 우리 가족 통합 자산 프로젝션 v16.0")
+st.markdown("---")
+
+# --- 4. 사이드바: 설정 레버 ---
 st.sidebar.title("🛠️ 재무 전략 설정")
 
 with st.sidebar.expander("📅 시나리오 기간 설정", expanded=True):
     c1, c2 = st.columns(2)
-    start_yr = c1.number_input("시작 연도", value=2026, min_value=2024, key="sys_start_yr")
-    end_yr = c2.number_input("종료 연도", value=2095, min_value=start_yr+10, max_value=2150, key="sys_end_yr")
+    start_yr = c1.number_input("시작 연도", value=st.session_state.get('sys_start_yr', 2026), min_value=2024, key="sys_start_yr")
+    end_yr = c2.number_input("종료 연도", value=st.session_state.get('sys_end_yr', 2095), min_value=start_yr+10, max_value=2150, key="sys_end_yr")
 
 with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=True):
     h_tab, w_tab = st.tabs(["남편(95)", "아내(94)"])
     with h_tab:
-        h_sal = st.number_input("남편 월급(만)", value=830, key="h_s_in")
-        h_bonus_r = st.number_input("남편 상여비율(%)", value=20.0, key="h_br_in") / 100
-        h_inc = st.number_input("급여 인상률(%)", value=3.0, key="h_i_in") / 100
+        h_sal = st.number_input("남편 월급(만)", value=st.session_state.get('h_s_in', 830), key="h_s_in")
+        h_bonus_r = st.number_input("남편 상여비율(%)", value=st.session_state.get('h_br_in', 20.0), key="h_br_in") / 100
+        h_inc = st.number_input("급여 인상률(%)", value=st.session_state.get('h_i_in', 3.0), key="h_i_in") / 100
         h_ages = list(range(40, 81))
         h_opts = [f"{1995 + a}년 ({a}세)" for a in h_ages]
         h_ret_def_idx = h_ages.index(55)
@@ -86,13 +97,13 @@ with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=Tru
             h_ret_def_idx = h_opts.index(st.session_state.h_ret_in)
         h_ret_sel = st.selectbox("남편 은퇴 시점", h_opts, index=h_ret_def_idx, key="h_ret_in")
         h_ret_age = h_ages[h_opts.index(h_ret_sel)]
-        h_sev_pay = st.number_input("예상 퇴직금(만)", value=10000, step=1000, key="h_sev_in")
-        h_p_amt = st.number_input("월 예상연금(65세~)", value=150, key="h_p_in")
+        h_sev_pay = st.number_input("예상 퇴직금(만)", value=st.session_state.get('h_sev_in', 10000), step=1000, key="h_sev_in")
+        h_p_amt = st.number_input("월 예상연금(65세~)", value=st.session_state.get('h_p_in', 150), key="h_p_in")
         
     with w_tab:
-        w_sal = st.number_input("아내 월급(만)", value=500, key="w_s_in")
-        w_bonus_r = st.number_input("아내 상여비율(%)", value=20.0, key="w_br_in") / 100
-        w_inc = st.number_input("급여 인상률(%)", value=3.0, key="w_inc_in") / 100
+        w_sal = st.number_input("아내 월급(만)", value=st.session_state.get('w_s_in', 500), key="w_s_in")
+        w_bonus_r = st.number_input("아내 상여비율(%)", value=st.session_state.get('w_br_in', 20.0), key="w_br_in") / 100
+        w_inc = st.number_input("급여 인상률(%)", value=st.session_state.get('w_inc_in', 3.0), key="w_inc_in") / 100
         w_ages = list(range(40, 81))
         w_opts = [f"{1994 + a}년 ({a}세)" for a in w_ages]
         w_ret_def_idx = w_ages.index(55)
@@ -100,24 +111,26 @@ with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=Tru
             w_ret_def_idx = w_opts.index(st.session_state.w_r_in)
         w_ret_sel = st.selectbox("아내 은퇴 시점", w_opts, index=w_ret_def_idx, key="w_r_in")
         w_ret_age = w_ages[w_opts.index(w_ret_sel)]
-        w_sev_pay = st.number_input("예상 퇴직금(만)", value=8000, step=1000, key="w_sev_in")
-        w_p_amt = st.number_input("아내 월 연금(65세~)", value=130, key="w_p_in")
+        w_sev_pay = st.number_input("예상 퇴직금(만)", value=st.session_state.get('w_sev_in', 8000), step=1000, key="w_sev_in")
+        w_p_amt = st.number_input("아내 월 연금(65세~)", value=st.session_state.get('w_p_in', 130), key="w_p_in")
 
 with st.sidebar.expander("💸 생활비 레버", expanded=False):
-    living_monthly = st.number_input("월 고정 생활비(만)", value=450, key="liv_m_in")
-    living_gr = st.number_input("생활비 인상률(%)", value=2.5, key="liv_g_in") / 100
+    living_monthly = st.number_input("월 고정 생활비(만)", value=st.session_state.get('liv_m_in', 450), key="liv_m_in")
+    living_gr = st.number_input("생활비 인상률(%)", value=st.session_state.get('liv_g_in', 2.5), key="liv_g_in") / 100
 
 with st.sidebar.expander("📈 금융 투자 자산 설정", expanded=False):
-    inv_init = st.number_input("현재 투자 원금(만)", value=15000, key="inv_ini_in")
-    inv_gr = st.number_input("기대 수익률(%)", value=7.0, key="inv_gr_in") / 100
-    inv_ratio = st.slider("💰 흑자 시 투자 비중(%)", 0, 100, 90, key="inv_rat_in")
+    inv_init = st.number_input("현재 투자 원금(만)", value=st.session_state.get('inv_ini_in', 15000), key="inv_ini_in")
+    inv_gr = st.number_input("기대 수익률(%)", value=st.session_state.get('inv_gr_in', 7.0), key="inv_gr_in") / 100
+    inv_ratio = st.slider("💰 흑자 시 투자 비중(%)", 0, 100, st.session_state.get('inv_rat_in', 90), key="inv_rat_in")
 
 with st.sidebar.expander("💳 대출 및 상환 방식", expanded=False):
     st.markdown("**기존 대출 설정**")
-    debt_init = st.number_input("현재 대출 잔액(만)", value=60000, key="debt_ini_in")
-    debt_r = st.number_input("기본 대출 금리(%)", value=4.0, key="debt_r_in") / 100
-    debt_term = st.number_input("상환 기간(년)", value=30, key="debt_t_in")
-    debt_type = st.selectbox("상환 방식 선택", ["원리금균등", "원금균등"], key="debt_tp_in")
+    debt_init = st.number_input("현재 대출 잔액(만)", value=st.session_state.get('debt_ini_in', 60000), key="debt_ini_in")
+    debt_r = st.number_input("기본 대출 금리(%)", value=st.session_state.get('debt_r_in', 4.0), key="debt_r_in") / 100
+    debt_term = st.number_input("상환 기간(년)", value=st.session_state.get('debt_t_in', 30), key="debt_t_in")
+    
+    dt_idx = 0 if st.session_state.get('debt_tp_in', "원리금균등") == "원리금균등" else 1
+    debt_type = st.selectbox("상환 방식 선택", ["원리금균등", "원금균등"], index=dt_idx, key="debt_tp_in")
     
     if st.session_state.re_trades:
         st.markdown("---")
@@ -130,8 +143,8 @@ with st.sidebar.expander("💳 대출 및 상환 방식", expanded=False):
             tr['new_debt_type'] = st.selectbox(f"신규 상환 방식 {i}", ["원리금균등", "원금균등"], index=0 if tr.get('new_debt_type', '원리금균등') == '원리금균등' else 1, key=f"nd_tp_{i}")
 
 with st.sidebar.expander("🏠 부동산 갈아타기 계획", expanded=False):
-    re_init_val = st.number_input("현재 집 가액(만)", value=150000, key="re_ini_in")
-    re_gr_rate = st.number_input("부동산 상승률(%)", value=4.0, key="re_gr_in") / 100
+    re_init_val = st.number_input("현재 집 가액(만)", value=st.session_state.get('re_ini_in', 150000), key="re_ini_in")
+    re_gr_rate = st.number_input("부동산 상승률(%)", value=st.session_state.get('re_gr_in', 4.0), key="re_gr_in") / 100
     if st.button("➕ 갈아타기 추가"):
         st.session_state.re_trades.append({"year": start_yr+10, "new_price": 250000, "use_inv": 60000, "new_debt_amt": 80000, "use_cash": 0})
     
@@ -197,19 +210,19 @@ with st.sidebar.expander("🍼 자녀 & 특별 이벤트", expanded=False):
 
 with st.sidebar.expander("👵 은퇴 시점 리밸런싱 & 배당", expanded=False):
     st.markdown("**1️⃣ 주택 연금화 (다운사이징)**")
-    ret_re_down_ratio = st.slider("최종 은퇴 시 부동산 매각 비율(%)", 0, 100, 30, step=10, key="ret_down_r")
+    ret_re_down_ratio = st.slider("최종 은퇴 시 부동산 매각 비율(%)", 0, 100, st.session_state.get('ret_down_r', 30), step=10, key="ret_down_r")
     st.caption("매각 대금은 양도세 정산 후 전액 금융자산으로 즉시 편입됩니다.")
     st.markdown("---")
     st.markdown("**2️⃣ 은퇴 시점 부채 상환**")
-    ret_debt_payoff_ratio = st.slider("은퇴 시 부채 상환 비율(%)", 0, 100, 100, step=10, key="ret_debt_r")
+    ret_debt_payoff_ratio = st.slider("은퇴 시 부채 상환 비율(%)", 0, 100, st.session_state.get('ret_debt_r', 100), step=10, key="ret_debt_r")
     st.caption("상환 자금은 총 금융자산 내에서 우선 차감됩니다.")
     st.markdown("---")
     st.markdown("**3️⃣ 은퇴 후 금융자산 배분**")
-    s_schd = st.slider("SCHD (배당성장) %", 0, 100, 25, key="ret_schd")
-    s_jepq = st.slider("JEPQ (고배당) %", 0, 100, 25, key="ret_jepq")
+    s_schd = st.slider("SCHD (배당성장) %", 0, 100, st.session_state.get('ret_schd', 25), key="ret_schd")
+    s_jepq = st.slider("JEPQ (고배당) %", 0, 100, st.session_state.get('ret_jepq', 25), key="ret_jepq")
     st.info(f"기존 금융자산 유지(재투자): {100 - s_schd - s_jepq}%")
 
-# --- 4. 시뮬레이션 엔진 ---
+# --- 5. 시뮬레이션 엔진 ---
 def run_simulation():
     res = []
     c_re = re_init_val
@@ -232,7 +245,6 @@ def run_simulation():
         ev_list, pension = [], 0
         t_acq_total, t_gain_total = 0, 0
         
-        # 1. 소득 및 배당 계산
         inc_h = (c_h_sal * 12 * (1+h_bonus_r)) if h_age <= h_ret_age else 0
         inc_w = (c_w_sal * 12 * (1+w_bonus_r)) if w_age <= w_ret_age else 0
         if h_age >= 65: pension += (h_p_amt * 12)
@@ -256,7 +268,6 @@ def run_simulation():
             c_inv += w_sev_pay
             ev_list.append(f"👩‍🦳아내 은퇴(퇴직금 {w_sev_pay//10000}억 편입)")
         
-        # 2. 부동산 갈아타기
         for tr in st.session_state.re_trades:
             if year == tr['year']:
                 gain = max(0, c_re - c_re_base) * 0.20
@@ -305,7 +316,6 @@ def run_simulation():
                 rem_debt_term = tr.get('new_debt_term', debt_term)
                 ev_list.append("🏠부동산 갈아타기")
 
-        # 3. 은퇴 시점 리밸런싱
         if year == final_ret_year:
             if ret_re_down_ratio > 0:
                 down_ratio = ret_re_down_ratio / 100
@@ -330,7 +340,6 @@ def run_simulation():
                     c_debt -= actual_payoff
                     ev_list.append(f"💳부채상환({ret_debt_payoff_ratio}%)")
 
-        # 4. 세금 및 양육비 계산
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
         t_fin_tax = div_income_y * 0.154 if div_income_y > 0 else 0
@@ -357,7 +366,6 @@ def run_simulation():
             if sch_stage: ev_list.append(sch_stage)
             if year == kid['birth']: ev_list.append(f"🍼{kid['name']} 탄생")
 
-        # 5. 부채 상환 계산 (ZeroDivisionError 완벽 방어)
         interest_a = c_debt * curr_debt_r
         principal_a, repay_a = 0, 0
         
@@ -365,7 +373,6 @@ def run_simulation():
             if curr_debt_type == "원리금균등":
                 if curr_debt_r > 0:
                     denom = ((1 + curr_debt_r) ** rem_debt_term) - 1
-                    # 수학적으로 분모가 0이 되는 극한의 예외 케이스 방어
                     if denom > 0:
                         pmt = (c_debt * curr_debt_r * ((1 + curr_debt_r) ** rem_debt_term)) / denom
                     else:
@@ -388,7 +395,6 @@ def run_simulation():
             spec_ev_names = [ev['name'] for ev in st.session_state.events if ev['year'] == year]
             ev_list.append(f"🎁이벤트: {','.join(spec_ev_names)}")
         
-        # 6. 지출 및 자산배분 (FCF 정산 - 금융자산 우선 매각 로직 적용)
         curr_living_y = (living_monthly * 12) * ((1 + living_gr)**(year - start_yr))
         total_exp_y = curr_living_y + k_total + total_tax_y + repay_a + ev_cost
         net_flow_y = total_income_y - total_exp_y
@@ -397,13 +403,12 @@ def run_simulation():
             c_inv += net_flow_y * (inv_ratio / 100)
             c_cash += net_flow_y * (1 - inv_ratio/100)
         else:
-            # 🚨 잉여현금(FCF)이 마이너스면 가장 먼저 금융자산을 팔아서 생활비를 충당합니다.
             c_inv += net_flow_y 
             if c_inv < 0:
-                c_cash += c_inv  # 금융자산이 바닥나면 예금을 헐어서 씁니다.
+                c_cash += c_inv  
                 c_inv = 0
                 if c_cash < 0:
-                    c_debt -= c_cash # 예금도 바닥나면 마이너스 통장(대출)이 늘어납니다.
+                    c_debt -= c_cash 
                     c_cash = 0
             
         c_re *= (1 + re_gr_rate)
@@ -446,7 +451,7 @@ def run_simulation():
 
 df_res = run_simulation()
 
-# --- 5. 대시보드 출력 UI ---
+# --- 6. 대시보드 출력 UI ---
 
 final_ret_yr = max(1995 + h_ret_age, 1994 + w_ret_age)
 if final_ret_yr <= end_yr:
@@ -460,15 +465,6 @@ if final_ret_yr <= end_yr:
     col4.metric(f"은퇴({final_ret_yr}년) 시 순자산", f"{ret_row['순자산_억']:.2f}억")
     st.markdown("---")
 
-def draw_premium_table(df):
-    fig = go.Figure(data=[go.Table(
-        header=dict(values=list(df.columns), fill_color='#0ea5e9', font=dict(color='white', size=16, family="Noto Sans KR"), align='center', height=45),
-        cells=dict(values=[df[col] for col in df.columns], fill_color='#f8fafc', font=dict(color='#0f172a', size=15, family="Noto Sans KR"), align='center', height=35))
-    ])
-    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=650)
-    return fig
-
-# 차트 하단 범례 겹침 방지 최적화 함수
 def draw_stacked_bar(data, items, title):
     fig = go.Figure()
     for col_name, label_name, color in items:
@@ -554,7 +550,6 @@ with m_tab:
 
 with t_tab:
     st.info("💡 **세무 시뮬레이션 가정 사항**\n* **취득세:** 갈아타기 주택 매수가의 3.3% 일괄 적용\n* **양도세:** 기존 주택 시세 차익의 20% 일괄 적용\n* **금융소득세:** 매년 발생하는 배당금의 15.4%를 세금 지출로 자동 차감 (연간/월간 지출 차트에 '세금'으로 합산됨)", icon="ℹ️")
-    
     st.header("⚖️ 상세 세무 분석 테이블 (단위: 만원)")
     t_disp = df_res[["연도", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만", "이벤트"]].copy()
     
@@ -569,7 +564,6 @@ with s_tab:
         st.warning(f"⚠️ 설정된 은퇴 연도({final_ret_yr}년)가 시뮬레이션 종료 시점({end_yr}년)을 초과합니다. 종료 연도를 늘려주세요.")
     else:
         st.header(f"🚩 최종 은퇴 연도: {final_ret_yr}년 (주택 다운사이징 및 부채상환 완료 후)")
-        
         st.info(f"💡 **배당 시뮬레이션 및 현재가치 가정 사항**\n* **현재가치(PV):** 매년 3%의 물가상승(할인율)을 가정하여, {final_ret_yr}년의 자산을 현재({start_yr}년) 기준의 구매력으로 환산합니다.\n* **은퇴 전 배당:** 금융자산에서 연 평균 1%의 배당수익이 발생한다고 가정합니다.\n* **은퇴 후 배당:** JEPQ는 연 9.5% 고정, SCHD는 초기 3.5% (이후 연 5%씩 배당금 성장, Yield on Cost 적용)로 배당금을 지급합니다.", icon="ℹ️")
         
         ret_row = df_res[df_res["연도"] == final_ret_yr].iloc[0]
@@ -639,7 +633,7 @@ with d_tab:
     d_disp["이벤트"] = d_disp["이벤트"].apply(lambda x: str(x).replace("<br>", " / "))
     st.dataframe(d_disp, use_container_width=True, hide_index=True, height=650)
 
-# --- 6. 사용자 데이터 자동 저장 로직 ---
+# --- 7. 사용자 데이터 자동 저장 로직 ---
 static_keys = [
     'sys_start_yr', 'sys_end_yr', 'h_s_in', 'h_br_in', 'h_i_in', 'h_ret_in', 'h_sev_in', 'h_p_in',
     'w_s_in', 'w_br_in', 'w_inc_in', 'w_r_in', 'w_sev_in', 'w_p_in',
@@ -647,17 +641,17 @@ static_keys = [
     'debt_ini_in', 'debt_r_in', 'debt_t_in', 'debt_tp_in', 're_ini_in', 're_gr_in',
     'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq'
 ]
-data_to_save = {
-    're_trades': st.session_state.re_trades,
-    'events': st.session_state.events,
-    'kids': st.session_state.kids
-}
-for k in static_keys:
-    if k in st.session_state:
-        data_to_save[k] = st.session_state[k]
 
-try:
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data_to_save, f, ensure_ascii=False, indent=4)
-except Exception:
-    pass
+# 클라우드 로그인된 상태일 때만 데이터 푸시
+if st.session_state.get('current_user'):
+    user_data = db.get(st.session_state.current_user, {})
+    for k in static_keys:
+        if k in st.session_state:
+            user_data[k] = st.session_state[k]
+            
+    user_data['re_trades'] = st.session_state.get('re_trades', [])
+    user_data['events'] = st.session_state.get('events', [])
+    user_data['kids'] = st.session_state.get('kids', [])
+
+    db[st.session_state.current_user] = user_data
+    save_cloud_db(db)
