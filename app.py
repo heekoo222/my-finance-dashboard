@@ -5,7 +5,7 @@ import json
 import urllib.request
 
 # =====================================================================
-# ☁️ 회원님의 전용 클라우드 DB 주소 (자동 연동 완료!)
+# ☁️ 회원님의 전용 클라우드 DB 주소 
 # =====================================================================
 FIREBASE_URL = "https://familiy-financial-plan-default-rtdb.asia-southeast1.firebasedatabase.app/finance_db.json"
 
@@ -45,6 +45,40 @@ def save_cloud_db(db_data):
     except Exception as e:
         st.sidebar.error("클라우드 저장 실패! 인터넷 연결을 확인해주세요.")
 
+# --- 정밀 소득세 & 4대보험 계산 엔진 (대한민국 누진세율 적용) ---
+def get_annual_tax_and_insurance(gross_income_manwon):
+    if gross_income_manwon <= 0:
+        return 0
+    
+    # 1. 4대보험 (국민, 건강, 장기요양, 고용) - 세전 급여의 약 9% 일괄 적용
+    insurance = gross_income_manwon * 0.09
+    
+    # 2. 근로소득세 과세표준 (세전급여 - 각종 소득/인적공제 평균 약 25% 가정)
+    tax_base = gross_income_manwon * 0.75
+    
+    # 3. 8단계 누진세율 적용 (대한민국 소득세법 기준)
+    if tax_base <= 1400:
+        tax = tax_base * 0.06
+    elif tax_base <= 5000:
+        tax = 84 + (tax_base - 1400) * 0.15
+    elif tax_base <= 8800:
+        tax = 624 + (tax_base - 5000) * 0.24
+    elif tax_base <= 15000:
+        tax = 1536 + (tax_base - 8800) * 0.35
+    elif tax_base <= 30000:
+        tax = 3706 + (tax_base - 15000) * 0.38
+    elif tax_base <= 50000:
+        tax = 9406 + (tax_base - 30000) * 0.40
+    elif tax_base <= 100000:
+        tax = 17406 + (tax_base - 50000) * 0.42
+    else:
+        tax = 38406 + (tax_base - 100000) * 0.45
+        
+    # 4. 지방소득세 10% 가산하여 최종 원천징수 세금 산출
+    final_tax = tax * 1.1
+    
+    return insurance + final_tax
+
 # --- 3. 클라우드 계정 로그인 UI ---
 db = load_cloud_db()
 
@@ -56,7 +90,6 @@ if not user_id:
     st.info("👈 **왼쪽 사이드바에 '아이디'를 입력해주세요.**\n\n(아무 아이디나 입력하시면 즉시 나만의 전용 클라우드 데이터베이스가 생성됩니다. 다른 기기에서도 해당 아이디만 입력하면 데이터를 그대로 불러옵니다!)", icon="🚀")
     st.stop()
 
-# 유저 데이터 바인딩 로직
 if 'current_user' not in st.session_state or st.session_state.current_user != user_id:
     st.session_state.current_user = user_id
     user_data = db.get(user_id, {})
@@ -84,10 +117,10 @@ with st.sidebar.expander("📅 시나리오 기간 설정", expanded=True):
     start_yr = c1.number_input("시작 연도", value=st.session_state.get('sys_start_yr', 2026), min_value=2024, key="sys_start_yr")
     end_yr = c2.number_input("종료 연도", value=st.session_state.get('sys_end_yr', 2095), min_value=start_yr+10, max_value=2150, key="sys_end_yr")
 
-with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=True):
+with st.sidebar.expander("👤 부부 소득(세전) 및 상여/퇴직금", expanded=True):
     h_tab, w_tab = st.tabs(["남편(95)", "아내(94)"])
     with h_tab:
-        h_sal = st.number_input("남편 월급(만)", value=st.session_state.get('h_s_in', 830), key="h_s_in")
+        h_sal = st.number_input("남편 월급(세전, 만)", value=st.session_state.get('h_s_in', 830), key="h_s_in")
         h_bonus_r = st.number_input("남편 상여비율(%)", value=st.session_state.get('h_br_in', 20.0), key="h_br_in") / 100
         h_inc = st.number_input("급여 인상률(%)", value=st.session_state.get('h_i_in', 3.0), key="h_i_in") / 100
         h_ages = list(range(40, 81))
@@ -101,7 +134,7 @@ with st.sidebar.expander("👤 부부 소득 및 상여/퇴직금", expanded=Tru
         h_p_amt = st.number_input("월 예상연금(65세~)", value=st.session_state.get('h_p_in', 150), key="h_p_in")
         
     with w_tab:
-        w_sal = st.number_input("아내 월급(만)", value=st.session_state.get('w_s_in', 500), key="w_s_in")
+        w_sal = st.number_input("아내 월급(세전, 만)", value=st.session_state.get('w_s_in', 500), key="w_s_in")
         w_bonus_r = st.number_input("아내 상여비율(%)", value=st.session_state.get('w_br_in', 20.0), key="w_br_in") / 100
         w_inc = st.number_input("급여 인상률(%)", value=st.session_state.get('w_inc_in', 3.0), key="w_inc_in") / 100
         w_ages = list(range(40, 81))
@@ -340,11 +373,16 @@ def run_simulation():
                     c_debt -= actual_payoff
                     ev_list.append(f"💳부채상환({ret_debt_payoff_ratio}%)")
 
+        # 🚨 신규 탑재: 정밀 소득세(누진세율) 및 4대보험 계산 로직 적용
+        tax_h = get_annual_tax_and_insurance(inc_h)
+        tax_w = get_annual_tax_and_insurance(inc_w)
+        tax_pension = pension * 0.05 if pension > 0 else 0  # 연금 저율과세(5%) 단순 적용
+        
         t_hold = (c_re * 0.6) * 0.002
         t_comp = max(0, (c_re - 120000) * 0.005)
         t_fin_tax = div_income_y * 0.154 if div_income_y > 0 else 0
         
-        tax_income_etc = (total_income_y * 0.15)
+        tax_income_etc = tax_h + tax_w + tax_pension
         total_tax_y = tax_income_etc + t_hold + t_comp + t_fin_tax
         
         k_total = 0
@@ -527,14 +565,14 @@ with m_tab:
     
     in_items_m = [("월_남편소득_만", "남편소득", "#3b82f6"), ("월_아내소득_만", "아내소득", "#ec4899"), ("월_배당_만", "배당(수입)", "#f59e0b"), ("월_연금_만", "공적연금", "#10b981")]
     out_items_m = [("월_생활비_만", "생활비", "#0ea5e9"), ("월_양육비_만", "양육비", "#10b981"), ("월_원리금_만", "대출상환", "#f59e0b"),
-                   ("월_보유세_만", "보유세", "#ef4444"), ("월_소득등세금_만", "세금(배당포함)", "#8b5cf6"), ("월_이벤트_만", "이벤트", "#ec4899")]
+                   ("월_보유세_만", "보유세", "#ef4444"), ("월_소득등세금_만", "소득세/4대보험", "#8b5cf6"), ("월_이벤트_만", "이벤트", "#ec4899")]
     
     in_items_y = [("연_남편소득_만", "남편소득", "#3b82f6"), ("연_아내소득_만", "아내소득", "#ec4899"), ("연_배당_만", "배당(수입)", "#f59e0b"), ("연_연금_만", "공적연금", "#10b981")]
     out_items_y = [("연_생활비_만", "생활비", "#0ea5e9"), ("연_양육비_만", "양육비", "#10b981"), ("연_원리금_만", "대출상환", "#f59e0b"),
-                   ("연_보유세_만", "보유세", "#ef4444"), ("연_소득등세금_만", "세금(배당포함)", "#8b5cf6"), ("연_이벤트_만", "이벤트", "#ec4899")]
+                   ("연_보유세_만", "보유세", "#ef4444"), ("연_소득등세금_만", "소득세/4대보험", "#8b5cf6"), ("연_이벤트_만", "이벤트", "#ec4899")]
 
     st.markdown("#### 🌊 월간 현금흐름 분석 (수입 vs 지출 vs FCF)")
-    st.info("💡 **FCF(잉여현금흐름)란?** 총 수입에서 모든 지출(생활비, 대출원리금, 세금 등)을 빼고 남은 '순수 여윳돈'입니다. 적자(-)가 발생할 경우 **보유 중인 금융자산(주식 등)을 1순위로 매각하여 자동으로 부족한 생활비를 충당**하도록 설계되었습니다.", icon="💵")
+    st.info("💡 **FCF(잉여현금흐름)란?** 총 수입에서 모든 지출(생활비, 대출원리금, 소득세 등)을 빼고 남은 '순수 여윳돈'입니다. 적자(-)가 발생할 경우 **보유 중인 금융자산(주식 등)을 1순위로 매각하여 자동으로 부족한 생활비를 충당**하도록 설계되었습니다.", icon="💵")
     
     cm1, cm2, cm3 = st.columns(3)
     cm1.plotly_chart(draw_stacked_bar(sub, in_items_m, "📥 월 유입 현금(만)"), use_container_width=True)
@@ -549,7 +587,7 @@ with m_tab:
     cy3.plotly_chart(draw_fcf_bar(sub, "연_FCF_만", "💵 연 잉여현금(FCF)"), use_container_width=True)
 
 with t_tab:
-    st.info("💡 **세무 시뮬레이션 가정 사항**\n* **취득세:** 갈아타기 주택 매수가의 3.3% 일괄 적용\n* **양도세:** 기존 주택 시세 차익의 20% 일괄 적용\n* **금융소득세:** 매년 발생하는 배당금의 15.4%를 세금 지출로 자동 차감 (연간/월간 지출 차트에 '세금'으로 합산됨)", icon="ℹ️")
+    st.info("💡 **세무 시뮬레이션 가정 사항**\n* **근로소득세 및 4대보험:** 매년 대한민국의 **8단계 누진세율(6%~45%)**과 4대보험(약 9%) 요율을 적용하여 정밀하게 원천징수액을 산출합니다.\n* **취득세:** 갈아타기 주택 매수가의 3.3% 일괄 적용\n* **양도세:** 기존 주택 시세 차익의 20% 일괄 적용\n* **금융소득세:** 배당금 발생액의 15.4%를 자동 차감합니다.", icon="ℹ️")
     st.header("⚖️ 상세 세무 분석 테이블 (단위: 만원)")
     t_disp = df_res[["연도", "보유세_만", "금융소득세_만", "양도세_만", "취득세_만", "이벤트"]].copy()
     
@@ -642,7 +680,6 @@ static_keys = [
     'ret_down_r', 'ret_debt_r', 'ret_schd', 'ret_jepq'
 ]
 
-# 클라우드 로그인된 상태일 때만 데이터 푸시
 if st.session_state.get('current_user'):
     user_data = db.get(st.session_state.current_user, {})
     for k in static_keys:
