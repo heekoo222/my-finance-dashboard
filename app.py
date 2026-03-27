@@ -12,7 +12,7 @@ FIREBASE_URL = "https://familiy-financial-plan-default-rtdb.asia-southeast1.fire
 
 st.set_page_config(page_title="우리 가족 자산 마스터 (Ultimate Ver.)", layout="wide")
 
-# 🌟 기존 디자인 완벽 유지
+# 🌟 기존 디자인 완벽 유지: 연한 하늘색 배경 + 검은색 글씨
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&display=swap');
@@ -83,10 +83,9 @@ if not user_id:
     st.info("👈 **왼쪽 사이드바에 아이디를 입력하여 나만의 재무설계를 시작하세요!**")
     st.stop()
 
-# 🌟 V20.0 핵심: 데이터 마이그레이션 및 시나리오(Case) 분리 로직
+# 🌟 데이터 로드 및 시나리오 구조 마이그레이션
 user_data = db.get(user_id, {})
 if 'cases' not in user_data:
-    # 기존 단일 데이터를 '기본 시나리오'라는 방으로 이사시킴
     old_data = {k: v for k, v in user_data.items() if k not in ['cases', 'last_active_case']}
     user_data = {'cases': {'기본 시나리오': old_data}, 'last_active_case': '기본 시나리오'}
     db[user_id] = user_data
@@ -103,6 +102,7 @@ def load_case_to_session(case_name):
     st.session_state.w_leaves = case_data.get('w_leaves', [])
 
 def save_current_to_db():
+    if 'current_case' not in st.session_state: return
     case_name = st.session_state.current_case
     case_data = user_data['cases'].get(case_name, {})
     for k in static_keys:
@@ -117,28 +117,37 @@ def save_current_to_db():
     db[user_id] = user_data
     save_cloud_db(db)
 
-# 접속 시 세션 초기화
+# 🌟 에러 완벽 방지: 이미 로그인된 세션이더라도 current_case가 없으면 무조건 강제 주입!
+if 'current_case' not in st.session_state:
+    st.session_state.current_case = user_data.get('last_active_case', '기본 시나리오')
+
 if 'current_user' not in st.session_state or st.session_state.current_user != user_id:
     st.session_state.current_user = user_id
-    st.session_state.current_case = user_data.get('last_active_case', '기본 시나리오')
     load_case_to_session(st.session_state.current_case)
+
+# 리스트형 데이터 누락 방지 안전장치
+if 're_trades' not in st.session_state: st.session_state.re_trades = []
+if 'events' not in st.session_state: st.session_state.events = []
+if 'kids' not in st.session_state: st.session_state.kids = [{"name": "첫째", "birth": 2027, "costs": [100, 150, 200, 250, 300]}]
+if 'h_leaves' not in st.session_state: st.session_state.h_leaves = []
+if 'w_leaves' not in st.session_state: st.session_state.w_leaves = []
 
 st.sidebar.success(f"🟢 **{user_id}** 계정 접속됨")
 st.sidebar.markdown("---")
 
-# 🌟 V20.0 핵심 UI: 맨 위 오른쪽 시나리오 관리 드롭다운
+# --- 🌟 V20.0 핵심 UI: 상단 우측 시나리오(Case) 관리 탭 ---
 c_title, c_case = st.columns([6, 4])
 with c_title:
-    st.title("💎 우리 가족 자산 프로젝션 v20.0")
+    st.title("💎 우리 가족 자산 프로젝션 v20.1")
 with c_case:
-    st.write("") # 상단 여백 조절
+    st.write("") # 상단 여백 밸런스
     with st.expander(f"📂 시나리오 관리: **{st.session_state.current_case}**", expanded=False):
         case_list = list(user_data['cases'].keys())
         
         # 1. 시나리오 변경
         selected_case = st.selectbox("현재 시나리오 선택", case_list, index=case_list.index(st.session_state.current_case))
         if selected_case != st.session_state.current_case:
-            save_current_to_db() # 기존 내용 킵
+            save_current_to_db()
             st.session_state.current_case = selected_case
             user_data['last_active_case'] = selected_case
             load_case_to_session(selected_case)
@@ -162,7 +171,7 @@ with c_case:
         
         st.markdown("---")
         
-        # 3. 시나리오 복사 (새로 만들기)
+        # 3. 시나리오 복사 
         if st.button("➕ 현재 가정으로 새 시나리오 복사", use_container_width=True):
             save_current_to_db()
             new_idx = len(case_list) + 1
@@ -199,6 +208,7 @@ with st.sidebar.expander("📅 시나리오 및 기본 설정", expanded=True):
     h_birth_yr = c3.number_input("남편 출생년도", value=st.session_state.get('h_birth_yr', 1995), key="h_birth_yr")
     w_birth_yr = c4.number_input("아내 출생년도", value=st.session_state.get('w_birth_yr', 1994), key="w_birth_yr")
 
+# 🌟 설명 툴팁 텍스트 유지
 pension_help_text = "은퇴 직후부터 평생 매월 수령할 '개인연금(연금저축펀드, 보험 등)' 및 '퇴직연금(IRP 등)'의 합산 금액을 세전 기준으로 입력하세요. 엔진이 매년 5.5%의 연금소득세를 자동으로 떼고 현금흐름에 반영합니다."
 
 with st.sidebar.expander("👤 남편 소득(세전) 및 휴직/은퇴", expanded=False):
@@ -235,6 +245,7 @@ with st.sidebar.expander("👤 남편 소득(세전) 및 휴직/은퇴", expande
     
     st.markdown("**🌱 은퇴 후 현금흐름**")
     h_p_amt = st.number_input("월 예상 공적연금(65세~)", value=st.session_state.get('h_p_in', 150), key="h_p_in")
+    # 🌟 툴팁(?) 추가 완료
     h_pp_amt = st.number_input("월 개인/퇴직연금(은퇴후~)", value=st.session_state.get('h_pp_in', 50), key="h_pp_in", help=pension_help_text)
     
     c1, c2 = st.columns(2)
@@ -275,17 +286,17 @@ with st.sidebar.expander("👩 아내 소득(세전) 및 휴직/은퇴", expande
     
     st.markdown("**🌱 은퇴 후 현금흐름**")
     w_p_amt = st.number_input("아내 월 예상연금(65세~)", value=st.session_state.get('w_p_in', 130), key="w_p_in")
+    # 🌟 툴팁(?) 추가 완료
     w_pp_amt = st.number_input("월 개인/퇴직연금(은퇴후~) ", value=st.session_state.get('w_pp_in', 30), key="w_pp_in", help=pension_help_text)
     
     c1, c2 = st.columns(2)
     w_side_in = c1.number_input("소일거리 월급(만) ", value=st.session_state.get('w_side_in', 50), step=10, key="w_side_in")
     w_side_end = c2.number_input("종료 나이(세) ", value=st.session_state.get('w_side_end', 70), min_value=w_ret_age, max_value=100, key="w_side_end")
 
-with st.sidebar.expander("💸 생활비 레버", expanded=False):
+with st.sidebar.expander("💸 생활비 및 투자", expanded=False):
     living_monthly = st.number_input("월 고정 생활비(만)", value=st.session_state.get('liv_m_in', 450), key="liv_m_in")
     living_gr = st.number_input("생활비 인상률(%)", value=st.session_state.get('liv_g_in', 2.5), key="liv_g_in") / 100
-
-with st.sidebar.expander("📈 금융 투자 자산 설정", expanded=False):
+    st.markdown("---")
     inv_init = st.number_input("현재 투자 원금(만)", value=st.session_state.get('inv_ini_in', 15000), key="inv_ini_in")
     inv_gr = st.number_input("기대 수익률(%)", value=st.session_state.get('inv_gr_in', 7.0), key="inv_gr_in") / 100
     inv_ratio = st.slider("💰 흑자 시 투자 비중(%)", 0, 100, st.session_state.get('inv_rat_in', 90), key="inv_rat_in")
@@ -382,6 +393,7 @@ with st.sidebar.expander("👵 은퇴 시점 리밸런싱 & 배당", expanded=Fa
     s_schd = st.slider("SCHD (배당성장) %", 0, 100, st.session_state.get('ret_schd', 25), key="ret_schd")
     s_jepq = st.slider("JEPQ (고배당) %", 0, 100, st.session_state.get('ret_jepq', 25), key="ret_jepq")
 
+# 🌟 신규 기능 독립 배치
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🔮 V19 고급 시나리오 옵션")
 is_pv_mode = st.sidebar.toggle("📉 인플레이션(현재가치) 반영", value=st.session_state.get('is_pv_mode', False), key="is_pv_mode", help="스위치를 켜면 향후 물가상승률을 반영하여 10년 뒤의 돈도 '현재의 체감 물가' 기준으로 할인하여 표시합니다.")
@@ -681,7 +693,7 @@ def run_simulation():
 
 df_res = run_simulation()
 
-# --- 5. 대시보드 출력 UI (V18 완전 복원) ---
+# --- 5. 대시보드 출력 UI (V18 모든 차트/표 완벽 복원) ---
 
 final_ret_yr = max(h_birth_yr + h_ret_age, w_birth_yr + w_ret_age)
 if final_ret_yr <= end_yr:
@@ -858,7 +870,7 @@ with d_tab:
 
 st.markdown("---")
 
-# --- 🌟 V19 신규 기능 하단 배치 (FIRE 계기판 & AI 리포트) ---
+# --- 🌟 6. V19 신규 기능 하단 독립 배치 (FIRE 계기판 & AI 리포트) ---
 def render_fire_gauge(df):
     ret_start_yr = max(h_birth_yr + 55, w_birth_yr + 55) 
     ret_df = df[df["연도"] >= ret_start_yr]
